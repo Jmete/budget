@@ -185,6 +185,37 @@ export interface BudgetState {
   tax: TaxParams;
 }
 
+// ------------------------------------------------------------------ ordering
+
+/** Returns a copy of `items` with the element at `from` moved to `to`. */
+export function moveItem<T>(items: readonly T[], from: number, to: number): T[] {
+  const next = items.slice();
+  const [it] = next.splice(from, 1);
+  next.splice(to, 0, it);
+  return next;
+}
+
+/**
+ * Stable sort that gathers items of the same group together, with groups in the
+ * order given by `order`. Items keep their relative order within a group.
+ */
+export function groupItems<T>(items: readonly T[], groupOf: (item: T) => string, order: readonly string[]): T[] {
+  const rank = (it: T) => {
+    const i = order.indexOf(groupOf(it));
+    return i < 0 ? order.length : i;
+  };
+  return items
+    .map((it, i) => ({ it, i, r: rank(it) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.it);
+}
+
+export const isGrouped = <T,>(items: readonly T[], groupOf: (item: T) => string, order: readonly string[]) =>
+  groupItems(items, groupOf, order).every((it, i) => it === items[i]);
+
+export const INCOME_ORDER = INCOME_KINDS.map((k) => k.value);
+export const ACCOUNT_ORDER = ACCOUNT_KINDS.map((k) => k.value);
+
 let counter = 0;
 export const uid = () =>
   (typeof crypto !== 'undefined' && 'randomUUID' in crypto

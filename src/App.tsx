@@ -8,12 +8,18 @@ import { SplitChart } from './components/charts/SplitChart';
 import { NumberField, SelectField, TextField } from './components/Fields';
 import { MobileNav } from './components/MobileNav';
 import { Readout } from './components/Readout';
-import { AddButton, ExpenseRows, IncomeRows, InvestmentRows, Section } from './components/Sections';
+import { AddButton, ExpenseRows, GroupButton, IncomeRows, InvestmentRows, Section } from './components/Sections';
 import { TaxBreakdown } from './components/TaxBreakdown';
 import {
+  ACCOUNT_ORDER,
   createDefaultState,
+  EXPENSE_CATEGORIES,
+  groupItems,
   INCOME_KINDS,
+  INCOME_ORDER,
+  isGrouped,
   loadState,
+  moveItem,
   PLAN_ACCOUNTS,
   RETIREMENT_TYPES,
   sanitizeState,
@@ -32,6 +38,19 @@ import { DEFAULT_TAX, type TaxParams } from './tax/params';
 type Theme = 'dark' | 'light';
 type ListKey = 'income' | 'investments' | 'essentials' | 'lifestyle';
 type ItemOf<K extends ListKey> = BudgetState[K][number];
+
+const GROUP_OF: { [K in ListKey]: (item: ItemOf<K>) => string } = {
+  income: (it) => it.kind,
+  investments: (it) => it.kind,
+  essentials: (it) => it.category,
+  lifestyle: (it) => it.category,
+};
+const GROUP_ORDER: Record<ListKey, readonly string[]> = {
+  income: INCOME_ORDER,
+  investments: ACCOUNT_ORDER,
+  essentials: EXPENSE_CATEGORIES,
+  lifestyle: EXPENSE_CATEGORIES,
+};
 
 export default function App() {
   const [state, setState] = useState<BudgetState>(loadState);
@@ -105,6 +124,14 @@ export default function App() {
   const removeItem = useCallback((key: ListKey, id: string) => {
     setState((s) => ({ ...s, [key]: (s[key] as { id: string }[]).filter((it) => it.id !== id) }));
   }, []);
+  const moveListItem = useCallback((key: ListKey, from: number, to: number) => {
+    setState((s) => ({ ...s, [key]: moveItem<{ id: string }>(s[key], from, to) }));
+  }, []);
+  const groupList = <K extends ListKey>(key: K) => {
+    setState((s) => ({ ...s, [key]: groupItems(s[key] as ItemOf<K>[], GROUP_OF[key] as (it: ItemOf<K>) => string, GROUP_ORDER[key]) }));
+  };
+  const listGrouped = <K extends ListKey>(key: K) =>
+    isGrouped(state[key] as ItemOf<K>[], GROUP_OF[key] as (it: ItemOf<K>) => string, GROUP_ORDER[key]);
   const addItem = <K extends ListKey>(key: K, item: ItemOf<K>) => {
     setState((s) => ({ ...s, [key]: [...s[key], item] }));
     // Focus the new row's name so the user can type straight away.
@@ -288,23 +315,29 @@ export default function App() {
                   fx={s.fx}
                   onChange={(id, p) => patchItem('income', id, p)}
                   onRemove={(id) => removeItem('income', id)}
+                  onMove={(from, to) => moveListItem('income', from, to)}
                 />
               </div>
-              <AddButton
-                onClick={() =>
-                  addItem('income', {
-                    id: uid(),
-                    name: '',
-                    kind: 'employment',
-                    amount: null,
-                    freq: 'year',
-                    currency: 'CAD',
-                    foreignTaxPct: null,
-                  } satisfies IncomeItem)
-                }
-              >
-                Add income
-              </AddButton>
+              <div className="list-actions">
+                <AddButton
+                  onClick={() =>
+                    addItem('income', {
+                      id: uid(),
+                      name: '',
+                      kind: 'employment',
+                      amount: null,
+                      freq: 'year',
+                      currency: 'CAD',
+                      foreignTaxPct: null,
+                    } satisfies IncomeItem)
+                  }
+                >
+                  Add income
+                </AddButton>
+                <GroupButton grouped={listGrouped('income')} onClick={() => groupList('income')}>
+                  Group by type
+                </GroupButton>
+              </div>
             </Section>
 
             <Section
@@ -319,15 +352,21 @@ export default function App() {
                   items={state.investments}
                   onChange={(id, p) => patchItem('investments', id, p)}
                   onRemove={(id) => removeItem('investments', id)}
+                  onMove={(from, to) => moveListItem('investments', from, to)}
                 />
               </div>
-              <AddButton
-                onClick={() =>
-                  addItem('investments', { id: uid(), name: '', kind: 'tfsa', amount: null, freq: 'month' } satisfies InvestmentItem)
-                }
-              >
-                Add contribution
-              </AddButton>
+              <div className="list-actions">
+                <AddButton
+                  onClick={() =>
+                    addItem('investments', { id: uid(), name: '', kind: 'tfsa', amount: null, freq: 'month' } satisfies InvestmentItem)
+                  }
+                >
+                  Add contribution
+                </AddButton>
+                <GroupButton grouped={listGrouped('investments')} onClick={() => groupList('investments')}>
+                  Group by account
+                </GroupButton>
+              </div>
 
               <div className="subpanels">
                 <fieldset className="param-group">
@@ -406,15 +445,21 @@ export default function App() {
                   items={state.essentials}
                   onChange={(id, p) => patchItem('essentials', id, p)}
                   onRemove={(id) => removeItem('essentials', id)}
+                  onMove={(from, to) => moveListItem('essentials', from, to)}
                 />
               </div>
-              <AddButton
-                onClick={() =>
-                  addItem('essentials', { id: uid(), name: '', category: 'Other', amount: null, freq: 'month' } satisfies ExpenseItem)
-                }
-              >
-                Add essential
-              </AddButton>
+              <div className="list-actions">
+                <AddButton
+                  onClick={() =>
+                    addItem('essentials', { id: uid(), name: '', category: 'Other', amount: null, freq: 'month' } satisfies ExpenseItem)
+                  }
+                >
+                  Add essential
+                </AddButton>
+                <GroupButton grouped={listGrouped('essentials')} onClick={() => groupList('essentials')}>
+                  Group by category
+                </GroupButton>
+              </div>
             </Section>
 
             <Section index="04" id="lifestyle" title="Lifestyle & subscriptions" total={budget.lifestyle / 12} tone="--s-lifestyle">
@@ -424,15 +469,21 @@ export default function App() {
                   items={state.lifestyle}
                   onChange={(id, p) => patchItem('lifestyle', id, p)}
                   onRemove={(id) => removeItem('lifestyle', id)}
+                  onMove={(from, to) => moveListItem('lifestyle', from, to)}
                 />
               </div>
-              <AddButton
-                onClick={() =>
-                  addItem('lifestyle', { id: uid(), name: '', category: 'Other', amount: null, freq: 'month' } satisfies ExpenseItem)
-                }
-              >
-                Add lifestyle expense
-              </AddButton>
+              <div className="list-actions">
+                <AddButton
+                  onClick={() =>
+                    addItem('lifestyle', { id: uid(), name: '', category: 'Other', amount: null, freq: 'month' } satisfies ExpenseItem)
+                  }
+                >
+                  Add lifestyle expense
+                </AddButton>
+                <GroupButton grouped={listGrouped('lifestyle')} onClick={() => groupList('lifestyle')}>
+                  Group by category
+                </GroupButton>
+              </div>
             </Section>
           </div>
 

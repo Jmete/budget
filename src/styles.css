@@ -712,6 +712,8 @@ main {
 /* Rows */
 .rows {
   display: grid;
+  /* Drag handle + remove button. */
+  --tools-w: 64px;
 }
 .row {
   display: grid;
@@ -726,10 +728,10 @@ main {
 .rows-income .row {
   grid-template-columns:
     minmax(130px, 1.7fr) minmax(118px, 1.1fr) minmax(150px, 1.2fr) minmax(106px, 0.85fr)
-    62px 84px 96px 30px;
+    62px 84px 96px var(--tools-w);
 }
 .rows-simple .row {
-  grid-template-columns: minmax(140px, 1.7fr) minmax(124px, 1.1fr) minmax(104px, 1fr) minmax(112px, 1fr) 90px 100px 30px;
+  grid-template-columns: minmax(140px, 1.7fr) minmax(124px, 1.1fr) minmax(104px, 1fr) minmax(112px, 1fr) 90px 100px var(--tools-w);
 }
 .row-head {
   font-size: 12px;
@@ -935,6 +937,39 @@ main {
   padding-left: 8px;
 }
 
+.c-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.row.is-dragging {
+  position: relative;
+  z-index: 5;
+  background: var(--panel);
+  outline: 1px solid var(--line-strong);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.rows.is-reordering {
+  user-select: none;
+}
+.rows.is-reordering,
+.rows.is-reordering * {
+  cursor: grabbing !important;
+}
+.icon-btn.drag-handle {
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  color: var(--ink-3);
+  cursor: grab;
+  touch-action: none;
+}
+.icon-btn.drag-handle:hover,
+.icon-btn.drag-handle:focus-visible {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
 .icon-btn.remove {
   width: 30px;
   height: 30px;
@@ -964,6 +999,24 @@ main {
   color: var(--ink);
   border-color: var(--ink);
   border-style: solid;
+}
+.list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+}
+.add-btn.group-btn {
+  margin-left: auto;
+  border-color: transparent;
+}
+.add-btn.group-btn:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+.add-btn.group-btn:disabled {
+  color: var(--ink-3);
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* Parameter groups */
@@ -1681,7 +1734,7 @@ main {
   /* Card layout: amount and frequency sit together, and the totals share rows with a field. */
   .rows-income .row,
   .rows-simple .row {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(var(--tools-w), 1fr);
     gap: 6px 8px;
     padding: 14px 0;
   }
@@ -1728,7 +1781,7 @@ main {
   .c-pct { grid-area: pct; }
   .c-mo { grid-area: mo; }
   .c-yr { grid-area: yr; }
-  .row .remove { grid-area: x; justify-self: end; }
+  .row .c-tools { grid-area: x; justify-self: end; }
   .c-mo .calc::after { content: ' /mo'; color: var(--ink-3); font-weight: 400; }
   .c-yr .calc::after { content: ' /yr'; color: var(--ink-3); font-weight: 400; }
   .rail {
@@ -1926,8 +1979,12 @@ main {
   .btn {
     height: 44px;
   }
+  .rows {
+    --tools-w: 92px;
+  }
   .icon-btn,
   .icon-btn.remove,
+  .icon-btn.drag-handle,
   .actions .btn:not(.ghost) {
     width: 44px;
     height: 44px;
@@ -1993,7 +2050,7 @@ main {
   .topbar,
   .mobile-nav,
   .add-btn,
-  .remove,
+  .c-tools,
   .link-btn,
   .toast {
     display: none !important;
