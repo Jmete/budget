@@ -66,7 +66,7 @@ export function Readout({ b }: { b: Budget }) {
         <Tile
           label="Planned saving rate"
           value={pct(b.savingsRate, 0)}
-          note="Your contributions ÷ take-home pay"
+          note="Your contributions ÷ take-home pay, not counting leftover cash"
         />
         <Tile
           label="RRSP & FHSA tax saving"
