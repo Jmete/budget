@@ -55,6 +55,7 @@ describe('computeBudget', () => {
       s.settings.matchRate = 100;
       s.settings.matchCapPct = 3;
       s.settings.rrspRoom = 5000;
+      s.settings.rooms.rrspStatus = 'verified';
     });
     const b = computeBudget(s);
     expect(b.employerMatch).toBeCloseTo(3000);
@@ -67,6 +68,8 @@ describe('computeBudget', () => {
     const b = computeBudget(
       withIncome((s) => {
         s.income[0].amount = 60000;
+        s.settings.rrspRoom = 20000;
+        s.settings.rooms.rrspStatus = 'verified';
         s.settings.retirementPct = 5;
         s.settings.matchRate = 100;
       }),
@@ -105,6 +108,8 @@ describe('computeBudget', () => {
       withIncome((s) => {
         s.income[0].amount = 100000;
         s.settings.planPct = 10;
+        s.settings.benefits.employerAccount = 'nonRegistered';
+        s.settings.benefits.benefitTreatment = 'nonCash';
         s.settings.planMatchRate = 50;
         s.settings.planMatchCapPct = 6;
       }),
@@ -114,7 +119,7 @@ describe('computeBudget', () => {
     expect(b.planMatch).toBeCloseTo(3000); // 50% of the first 6%
     expect(b.tax.totalIncome).toBeCloseTo(103000);
     expect(b.planMatchTax).toBeGreaterThan(0);
-    expect(b.afterTax).toBeCloseTo(base.afterTax - b.planMatchTax);
+    expect(b.afterTax).toBeCloseTo(base.afterTax - b.planMatchTax!);
     expect(b.totalInvested).toBeCloseTo(13000);
   });
 
@@ -124,6 +129,10 @@ describe('computeBudget', () => {
         s.income[0].amount = 100000;
         s.settings.planPct = 6;
         s.settings.planAccount = 'rrsp';
+        s.settings.benefits.employerAccount = 'rrsp';
+        s.settings.benefits.benefitTreatment = 'cash';
+        s.settings.rrspRoom = 20000;
+        s.settings.rooms.rrspStatus = 'verified';
         s.settings.planMatchRate = 50;
       }),
     );
@@ -133,6 +142,7 @@ describe('computeBudget', () => {
   it('caps the FHSA deduction at the annual limit', () => {
     const s = withIncome((s) => {
       s.income[0].amount = 90000;
+      Object.assign(s.settings.rooms, { fhsaState: 'opened', fhsaOpened: '2026-01-01', fhsaEligibilityConfirmed: true, fhsaStatus: 'estimated', fhsaLifetimeUsed: 0 });
       s.investments.find((i) => i.kind === 'fhsa')!.amount = 1000; // 12,000/yr
     });
     expect(computeBudget(s).fhsaDeduction).toBe(8000);

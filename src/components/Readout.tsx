@@ -32,11 +32,15 @@ export function Readout({ b }: { b: Budget }) {
     <section className="readout panel" id="summary" aria-labelledby="readout-title">
       <div className="readout-main">
         <h2 id="readout-title" className="readout-label">
-          {short ? 'Short each month' : 'Left over each month'}
+          {b.calendarMode
+            ? `${b.taxYear} average ${short ? 'shortfall' : 'left over'} per month`
+            : short ? 'Short each month' : 'Left over each month'}
         </h2>
         <p className={`hero-figure ${short ? 'is-neg' : ''}`} aria-live="polite">
           {fmt(Math.abs(monthlyLeft))}
         </p>
+        {b.taxProvisional && <p className="hint">Provisional budget — see unconfirmed plan, room or residency assumptions below.</p>}
+        {b.calendarMode && <p className="hint">Entire calendar-year totals ÷ 12, including months before employment. This is not a typical working month.</p>}
         <p className="readout-sub">
           {hasIncome
             ? short
@@ -47,7 +51,7 @@ export function Readout({ b }: { b: Budget }) {
       </div>
 
       <dl className="tiles">
-        <Tile label="Take-home pay" value={fmt(b.afterTax / 12)} unit="/mo" note={`${fmt(b.afterTax)} a year`} />
+        <Tile label="After estimated tax" value={fmt(b.afterTax / 12)} unit="/mo" note={`${fmt(b.afterTax)} a year, before savings`} />
         <Tile
           label="Tax, CPP & EI"
           value={fmt(b.tax.totalDeducted / 12)}
@@ -64,12 +68,12 @@ export function Readout({ b }: { b: Budget }) {
           value={pct(b.savingsRate, 0)}
           note={
             b.employerMatch + b.planMatch > 0
-              ? `plus ${fmt(b.employerMatch + b.planMatch)}/yr employer match`
+              ? `plus ${fmt(b.employerMatch + b.planMatch)}/yr employer contributions`
               : 'Savings + leftover ÷ take-home'
           }
         />
         <Tile
-          label="RRSP & FHSA refund"
+          label="RRSP & FHSA tax saving"
           value={fmt(b.deductionSavings)}
           unit="/yr"
           note="Tax saved by your deductions"

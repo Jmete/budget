@@ -1,4 +1,6 @@
+import { DEFAULT_BENEFITS, DEFAULT_ROOMS, sanitizeDetails, type BenefitRules, type RoomDetails } from './benefits';
 import { DEFAULT_TAX, type TaxParams } from '../tax/params';
+import { roomsForPlanningYear, sanitizeRoomYears, type RoomYearRecord } from './roomYears';
 
 export type Freq = 'week' | 'biweekly' | 'semimonthly' | 'month' | 'quarter' | 'year';
 
@@ -137,6 +139,10 @@ export interface ExpenseItem {
 }
 
 export interface Settings {
+  benefits: BenefitRules;
+  rooms: RoomDetails;
+  /** Previously entered room and history, saved separately for each planning year. */
+  roomYears: Record<string, RoomYearRecord>;
   scenario: string;
   /** Workplace retirement plan type. Decides how contributions are taxed. */
   retirementType: RetirementType;
@@ -150,7 +156,7 @@ export interface Settings {
   matchMax: number | null;
   /** Employee savings / share purchase plan: your payroll contribution, in percent of salary. */
   planPct: number | null;
-  /** Account the plan's contributions (yours and the employer's) land in. */
+  /** Account for employee contributions only; employer destination is separate. */
   planAccount: PlanAccount;
   /** Employer match, in percent of your plan contribution (50 = 50 cents per dollar). */
   planMatchRate: number | null;
@@ -257,6 +263,9 @@ export function createDefaultState(): BudgetState {
   return {
     version: 1,
     settings: {
+      benefits: { ...DEFAULT_BENEFITS },
+      rooms: { ...DEFAULT_ROOMS, year: DEFAULT_TAX.year },
+      roomYears: {},
       scenario: '',
       retirementType: 'groupRrsp',
       retirementPct: null,
@@ -358,7 +367,15 @@ export function sanitizeState(raw: unknown): BudgetState {
   const s = (r.settings ?? {}) as Record<string, unknown>;
   const fx = (s.fx ?? {}) as Record<string, unknown>;
 
+  const rooms = sanitizeDetails(s.rooms, { ...DEFAULT_ROOMS, year: num((r.tax as Record<string, unknown>)?.year) ?? DEFAULT_TAX.year });
+  // Existing entered amounts remain estimates, never silently become CRA-verified.
+  if (!s.rooms) for (const k of ['rrsp', 'tfsa', 'fhsa'] as const) {
+    if (num(s[`${k}Room`]) !== null) rooms[`${k}Status`] = 'estimated';
+  }
   const settings: Settings = {
+    benefits: sanitizeDetails(s.benefits, DEFAULT_BENEFITS),
+    rooms,
+    roomYears: sanitizeRoomYears(s.roomYears),
     scenario: str(s.scenario),
     retirementType: oneOf(s.retirementType, RETIREMENT_TYPES.map((t) => t.value), 'groupRrsp'),
     retirementPct: num(s.retirementPct),
@@ -415,7 +432,7 @@ export function sanitizeState(raw: unknown): BudgetState {
 
   return {
     version: 1,
-    settings,
+    settings: roomsForPlanningYear(settings, tax.year),
     income: list(r.income, (x) => ({
       id: str(x.id) || uid(),
       name: str(x.name),
@@ -446,6 +463,12 @@ export function loadState(): BudgetState {
     // Corrupt or foreign data: start fresh rather than crash.
   }
   return createDefaultState();
+}
+
+/** All UI tax updates (including reset) share the same room-year transition. */
+export function updateTaxParams(state: BudgetState, patch: Partial<TaxParams>): BudgetState {
+  const tax = { ...state.tax, ...patch };
+  return { ...state, tax, settings: roomsForPlanningYear(state.settings, tax.year) };
 }
 
 export function saveState(state: BudgetState) {

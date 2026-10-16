@@ -1,5 +1,43 @@
-*.xlsx
+# Dependencies and generated output
 node_modules/
 dist/
-*.local
 *.tsbuildinfo
+coverage/
+
+# Local environment and credentials. Templates must contain placeholders only.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.local
+.npmrc
+.netrc
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials.json
+service-account*.json
+
+# Personal budget downloads (including scenario names and duplicate downloads)
+budget-*.json
+
+# Financial spreadsheets, exports, and local private documents
+*.xlsx
+*.xls
+*.xlsm
+*.ods
+*.csv
+*.tsv
+/private/
+/exports/
+/backups/
+/docs/benefits-audit.md
+
+# Logs may contain local paths or personal input
+*.log
+.DS_Store
+Thumbs.db

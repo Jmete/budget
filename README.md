@@ -27,7 +27,7 @@ config.
 ```sh
 npm install
 npm run dev     # http://localhost:5173
-npm test        # tax engine tests (checked against the original spreadsheet formulas)
+npm test        # tax, plan, contribution-room and state regression tests
 npm run build   # static site in dist/
 ```
 
@@ -37,3 +37,9 @@ npm run build   # static site in dist/
 
 These are estimates. The planner does not cover every credit (tuition, medical, donations, Canada Workers Benefit,
 etc.), and it treats foreign tax credits simply. Check with a Canadian tax professional before filing.
+
+## Workplace plans and contribution room
+
+Enter your workplace pension and savings plan details under **Savings & investing**, including contribution rates, employer matching, waiting periods and caps. Full-year monthly planning is the default. Confirm employee allocation and the separate employer account; select calendar-year mode only when you want date-based proration. Room stays unknown until verified or estimated; an unopened FHSA creates no room.
+
+See [the benefits audit](docs/benefits-audit.md) for the calculation map, CRA sources, before-and-after figures, and remaining plan/residency assumptions.

@@ -6,6 +6,8 @@ import {
   type IncomeItem,
   type IncomeKind,
 } from '../state/model';
+import { calculatePlans, positive, yearFraction, validDate } from './plans';
+import { contributionRooms } from './rooms';
 import { calculateTax, EMPTY_INPUT, marginalBracketRate, type TaxInput, type TaxResult } from './engine';
 
 export interface Warning {
@@ -47,8 +49,22 @@ export interface Budget {
   pensionAdjustment: number; // DC pension contributions that reduce next year's RRSP room
   planContribution: number; // your payroll contribution to the employee savings plan
   planMatch: number; // employer's contribution to it, taxed as employment income
-  planMatchTax: number; // net tax, CPP and EI on it, after any RRSP deduction
+  planMatchTax: number | null; // net tax, CPP and EI on it, after any RRSP deduction
   totalInvested: number;
+  employerAutomatic: number;
+  employerMatching: number;
+  planMatchIncomeTax: number | null;
+  planMatchPayrollTax: number | null;
+  planTaxRange: [number, number];
+  taxableBenefits: number;
+  roomUsed: { rrsp: number; tfsa: number; fhsa: number };
+  roomAvailable: ReturnType<typeof contributionRooms>;
+  investedByAccount: Record<string, number>;
+  plans: ReturnType<typeof calculatePlans>;
+  taxProvisional: boolean;
+  actualCashAfterPayroll: number | null;
+  taxYear: number;
+  calendarMode: boolean;
 
   essentials: number;
   lifestyle: number;
@@ -116,17 +132,20 @@ function sumExpenses(items: ExpenseItem[]) {
   return items.reduce((s, e) => s + annual(e.amount, e.freq), 0);
 }
 
-function matchOn(contribution: number, salary: number, rate: number | null, capPct: number | null, max: number | null) {
-  if (!rate || rate <= 0) return 0;
-  const eligible = capPct != null ? Math.min(contribution, (salary * capPct) / 100) : contribution;
-  const match = (eligible * rate) / 100;
-  return max != null && max > 0 ? Math.min(match, max) : match;
-}
-
 export function computeBudget(state: BudgetState): Budget {
   const { settings: st, tax: p } = state;
   const warnings: Warning[] = [];
 
+  const rules = st.benefits;
+  const calendar = rules.mode === 'calendar';
+  const employmentFraction = calendar ? yearFraction(p.year, rules.employmentStart) : 1;
+  const annualSalary = state.income.filter(i => i.kind === 'employment').reduce((sum, i) => sum + annual(i.amount, i.freq) * toCad(i, st.fx), 0);
+  const plans = calculatePlans(st, p, annualSalary);
+  const roomAvailable = contributionRooms(st, p);
+  if (calendar && !validDate(rules.employmentStart)) warnings.push({ level: 'warning', text: 'Enter your employment start date. Calendar-year salary and plan contributions are excluded until it is known.' });
+  if (calendar) warnings.push({ level: 'info', text: 'Calendar-year salary uses complete months / 12 and calendar days for partial months. Monthly figures are annual totals / 12, not the amount on an active-month payslip. Income rows are annualized; other income, investments and expenses remain the annual totals you enter.' });
+  if (rules.residency === 'partYearUnknown') warnings.push({ level: 'warning', text: 'Part-year Canadian residency: tax is provisional. This engine uses full-year personal credits and does not determine residency, pre-arrival world income or newcomer credit entitlements. Adjust Tax assumptions using your return or adviser; withholding is separate below.' });
+  if (p.year !== 2026) warnings.push({ level: 'warning', text: `Planning year ${p.year}: tax rates and annual limits do not automatically update. Review Tax assumptions for that year; saved contribution room only applies to its stated year.` });
   // --- Income -----------------------------------------------------------------
   const incomeLines: Record<string, IncomeLine> = {};
   const byKind = {
@@ -139,7 +158,7 @@ export function computeBudget(state: BudgetState): Budget {
     taxFree: 0,
   } as Record<IncomeKind, number>;
   for (const item of state.income) {
-    const annualCad = annual(item.amount, item.freq) * toCad(item, st.fx);
+    const annualCad = annual(item.amount, item.freq) * toCad(item, st.fx) * (item.kind === 'employment' ? employmentFraction : 1);
     const foreignTax = item.kind === 'taxFree' ? 0 : Math.max(0, annualCad) * ((item.foreignTaxPct ?? 0) / 100);
     incomeLines[item.id] = { id: item.id, annualCad, foreignTax };
     byKind[item.kind] += annualCad;
@@ -151,101 +170,92 @@ export function computeBudget(state: BudgetState): Budget {
   // --- Contributions ------------------------------------------------------------
   const contributions: Record<AccountKind, number> = { rrsp: 0, fhsa: 0, tfsa: 0, nonRegistered: 0, other: 0 };
   for (const i of state.investments) contributions[i.kind] += Math.max(0, annual(i.amount, i.freq));
-  const ofSalary = (pct: number | null) => (Math.max(0, salary) * Math.max(0, pct ?? 0)) / 100;
-
-  // Workplace retirement plan. A group RRSP is just an RRSP paid through payroll;
-  // a DC pension is a separate registered plan with its own deduction.
+  for (const k of ['rrsp', 'tfsa', 'fhsa'] as const) contributions[k] += positive(st.rooms[`${k}Elsewhere`]);
   const dcPension = st.retirementType === 'dcPension';
-  const retirementContribution = ofSalary(st.retirementPct);
-  if (!dcPension) contributions.rrsp += retirementContribution;
-  const employerMatch = matchOn(retirementContribution, salary, st.matchRate, st.matchCapPct, st.matchMax);
-
-  // Employee savings / share purchase plan.
-  const planContribution = ofSalary(st.planPct);
-  contributions[st.planAccount] += planContribution;
-  const planMatch = matchOn(planContribution, salary, st.planMatchRate, st.planMatchCapPct, st.planMatchMax);
-
-  const personalContributions =
-    Object.values(contributions).reduce((a, b) => a + b, 0) + (dcPension ? retirementContribution : 0);
-
-  // Employer contributions to a group RRSP or savings plan are taxable employment
-  // income (with CPP and EI). Those paid into an RRSP are then deductible like your own.
-  // Employer DC pension contributions aren't taxed; they reduce next year's RRSP room instead.
+  const retirementContribution = plans.employee;
+  const employerMatch = plans.automatic + plans.matching;
   const groupRrspMatch = dcPension ? 0 : employerMatch;
-  const taxableBenefits = groupRrspMatch + planMatch;
-  const rrspContributed = contributions.rrsp + groupRrspMatch + (st.planAccount === 'rrsp' ? planMatch : 0);
-  const tfsaContributed = contributions.tfsa + (st.planAccount === 'tfsa' ? planMatch : 0);
-  const pensionAdjustment = dcPension ? retirementContribution + employerMatch : 0;
-
-  // Deduction limits
-  const earnedIncome = Math.max(0, salary + taxableBenefits + consulting);
-  const estNewRrspRoom = Math.max(0, Math.min(p.rrspDollarLimit, earnedIncome * p.rrspEarnedIncomeRate) - pensionAdjustment);
-  const rrspDeductionFor = (contributed: number) => Math.min(contributed, st.rrspRoom ?? Infinity);
+  if (!dcPension) contributions.rrsp += retirementContribution;
+  const planContribution = plans.savingsEmployee;
+  const planMatch = plans.savingsMatch;
+  const rrspAllocation = positive(rules.employeeRrspAllocation);
+  const tfsaAllocation = positive(rules.employeeTfsaAllocation);
+  const invalidAllocation = rules.employeeSplit && rrspAllocation + tfsaAllocation > 100;
+  if (rules.employeeSplit && !invalidAllocation) {
+    contributions.rrsp += planContribution * rrspAllocation / 100;
+    contributions.tfsa += planContribution * tfsaAllocation / 100;
+    contributions.nonRegistered += planContribution * (100 - rrspAllocation - tfsaAllocation) / 100;
+  } else if (invalidAllocation) contributions.other += planContribution;
+  else contributions[st.planAccount] += planContribution;
+  if (invalidAllocation) warnings.push({ level: 'warning', text: 'Savings allocation exceeds 100%. Reduce the RRSP or TFSA percentage. Employee savings remain unallocated with no registered-account deduction or room allocation until corrected.' });
+  const personalContributions = Object.values(contributions).reduce((a, b) => a + b, 0) + (dcPension ? retirementContribution : 0);
+  const rawDestination = rules.employerAccount;
+  const destination = rules.planKind === 'profitSharing' && !['unknown', 'epsp', 'dpsp'].includes(rawDestination) ? 'unknown' : rawDestination;
+  const epsp = destination === 'epsp', dpsp = destination === 'dpsp';
+  const unknownBenefit = destination === 'unknown' || (!epsp && !dpsp && rules.benefitTreatment === 'unknown');
+  const taxablePlanMatch = dpsp || (!epsp && !unknownBenefit && rules.benefitTreatment === 'exempt') ? 0 : planMatch;
+  const planPensionable = epsp || dpsp || rules.planKind === 'profitSharing' ? 0 : taxablePlanMatch;
+  const planInsurable = epsp || dpsp || rules.planKind === 'profitSharing' || rules.benefitTreatment === 'nonCash' ? 0 : taxablePlanMatch;
+  const taxableBenefits = groupRrspMatch + taxablePlanMatch;
+  const rrspContributed = contributions.rrsp + groupRrspMatch + (destination === 'rrsp' ? planMatch : 0);
+  const tfsaContributed = contributions.tfsa + (destination === 'tfsa' ? planMatch : 0);
+  const pensionAdjustment = (dcPension ? retirementContribution + employerMatch : 0) + (dpsp ? planMatch : 0);
+  const roomUsed = { rrsp: rrspContributed, tfsa: tfsaContributed, fhsa: contributions.fhsa };
+  const rrspDeductionFor = (contributed: number) => Math.min(positive(contributed) + positive(st.rooms.rrspPriorUnused), roomAvailable.rrsp ?? 0);
   const rrspDeduction = rrspDeductionFor(rrspContributed);
-  if (st.rrspRoom != null && rrspContributed > st.rrspRoom) {
-    warnings.push({
-      level: 'warning',
-      text: `RRSP contributions${rrspContributed > contributions.rrsp ? ' (including employer contributions)' : ''} exceed your room by ${fmt(rrspContributed - st.rrspRoom)}. Only ${fmt(rrspDeduction)} is deducted, and over-contributions beyond C$2,000 are charged 1% per month.`,
-    });
-  } else if (st.rrspRoom == null && rrspContributed > estNewRrspRoom && rrspContributed > 0) {
-    warnings.push({
-      level: 'info',
-      text: `Your RRSP total (${fmt(rrspContributed)}/yr) is above the room this income creates (about ${fmt(estNewRrspRoom)}). That's fine if you have unused room. Check your Notice of Assessment and enter it under Contribution room.`,
-    });
+  const fhsaDeduction = Math.min(contributions.fhsa, roomAvailable.fhsa ?? 0);
+  let taxProvisional = invalidAllocation || (calendar && !validDate(rules.employmentStart)) || rules.residency === 'partYearUnknown' || p.year !== 2026 || (planMatch > 0 && unknownBenefit);
+  for (const k of ['rrsp', 'tfsa', 'fhsa'] as const) {
+    const available = k === 'rrsp' ? roomAvailable.rrspNewContributions : roomAvailable[k];
+    if (available === null) {
+      if (roomUsed[k] > 0 || (k === 'rrsp' && st.rooms.rrspPriorUnused > 0)) {
+        if (k !== 'tfsa') taxProvisional = true;
+        warnings.push({ level: 'warning', text: `${k.toUpperCase()} room is unknown for ${p.year}. Planned contributions of ${fmt(roomUsed[k])} are not confirmed safe. ${k === 'tfsa' ? 'No residency years are assumed.' : 'No deduction based on unknown room is included.'} Enter verified room or a documented estimate.` });
+      }
+    } else if (roomUsed[k] > available) warnings.push({ level: 'warning', text: `${k.toUpperCase()} contributions exceed available room by ${fmt(roomUsed[k] - available)}. Contributions remain in cash flow; deductions are capped. Excess-contribution tax is not included. Reduce contributions or confirm additional room before contributing.` });
+    if (st.rooms[`${k}Status`] === 'estimated' && roomUsed[k] > 0) warnings.push({ level: 'info', text: `${k.toUpperCase()} room is an estimate, not CRA-verified.` });
   }
+  if (st.rooms.rrspPriorUnused > (roomAvailable.rrsp ?? Infinity)) warnings.push({ level: 'warning', text: 'Previously unused RRSP contributions already exceed the entered deduction limit. Check CRA records; no automatic $2,000 deduction buffer is allowed.' });
+  if (plans.limited || plans.dpspLimited) warnings.push({ level: 'warning', text: `Registered pension savings are capped at ${fmt(plans.dcLimit)}. The selected limit-allocation convention is a budget estimate; confirm how your administrator allocates reductions and forfeitures.` });
+  if ((st.retirementPct ?? 0) > (rules.retirementEmployeeMaxPct ?? Infinity) || (st.planPct ?? 0) > (rules.savingsEmployeeMaxPct ?? Infinity)) warnings.push({ level: 'warning', text: 'An employee contribution election exceeds the configured plan maximum. The contribution calculation uses the maximum allowed rate.' });
+  if (pensionAdjustment > 0) warnings.push({ level: 'info', text: `Approximate pension adjustment: ${fmt(pensionAdjustment)} for ${p.year}, reducing new RRSP room calculated for ${p.year + 1}. It does not consume today's RRSP room. Use the actual T4 pension adjustment; forfeitures and other adjustments can differ.` });
+  if (unknownBenefit && planMatch > 0) warnings.push({ level: 'warning', text: 'Employer savings-match structure is unconfirmed. Budget tax reserves assume a taxable benefit and no unconfirmed employer RRSP deduction. Generic unconfirmed plans include CPP/EI; Separate profit-sharing arrangements use neither because their employer choices are EPSP or DPSP. The match tax is shown as unresolved. Select the actual employer account and benefit treatment from your plan documents.' });
+  if (epsp && planMatch > 0) warnings.push({ level: 'info', text: 'EPSP allocations are taxable on T4PS, with no CPP/EI or income-tax withholding on the allocation. Set aside the estimated tax; the shares are not bank-account cash. Enter subsequent taxable investment income separately.' });
+  if (dpsp && planMatch > 0) warnings.push({ level: 'info', text: 'DPSP employer contributions generate a pension adjustment and are generally taxed on withdrawal. A DPSP is different from an EPSP. This simplified limit calculation assumes both workplace plans have the same employer.' });
 
-  if (dcPension && pensionAdjustment > 0) {
-    const dcLimit = Math.min(p.moneyPurchaseLimit, Math.max(0, salary) * p.rrspEarnedIncomeRate);
-    if (pensionAdjustment > dcLimit) {
-      warnings.push({
-        level: 'warning',
-        text: `DC pension contributions of ${fmt(pensionAdjustment)}/yr (yours plus your employer's) are above the ${fmt(dcLimit)} limit for this salary. Your plan will stop contributions at the limit.`,
-      });
-    }
-    warnings.push({
-      level: 'info',
-      text: `Your DC pension contributions (${fmt(pensionAdjustment)}/yr, yours plus your employer's) are reported as a pension adjustment, which lowers next year's RRSP room to about ${fmt(estNewRrspRoom)}.`,
-    });
-  }
-
-  const fhsaRoom = st.fhsaRoom ?? p.fhsaAnnualLimit;
-  const fhsaDeduction = Math.min(contributions.fhsa, fhsaRoom);
-  if (contributions.fhsa > fhsaRoom) {
-    warnings.push({
-      level: 'warning',
-      text: `FHSA contributions of ${fmt(contributions.fhsa)}/yr exceed ${st.fhsaRoom != null ? 'your room' : 'the annual limit'} of ${fmt(fhsaRoom)}. Only ${fmt(fhsaDeduction)} is deducted.`,
-    });
-  }
-
-  const tfsaRoom = st.tfsaRoom ?? p.tfsaAnnualLimit;
-  if (tfsaContributed > tfsaRoom) {
-    warnings.push({
-      level: st.tfsaRoom != null ? 'warning' : 'info',
-      text:
-        st.tfsaRoom != null
-          ? `TFSA contributions of ${fmt(tfsaContributed)}/yr exceed your room of ${fmt(tfsaRoom)}. Excess amounts are taxed 1% per month.`
-          : `TFSA contributions of ${fmt(tfsaContributed)}/yr are above the ${p.year} limit of ${fmt(p.tfsaAnnualLimit)}. That's fine if you have carry-forward room. Enter it under Contribution room to check.`,
-    });
-  }
-
-  // --- Tax --------------------------------------------------------------------------
+  // --- Tax: benefits have independent income-tax, CPP and EI bases. --------------
   const input = buildTaxInput(state, incomeLines);
   input.rrspDeduction = rrspDeduction;
   input.fhsaDeduction = fhsaDeduction;
   input.rppDeduction = dcPension ? retirementContribution : 0;
   input.otherDeductions = st.otherDeductions ?? 0;
-  input.employment += taxableBenefits;
+  const otherEmploymentBenefit = epsp || (rules.planKind === 'profitSharing' && unknownBenefit);
+  input.employment += groupRrspMatch + (otherEmploymentBenefit ? 0 : taxablePlanMatch);
+  input.other += otherEmploymentBenefit ? taxablePlanMatch : 0;
+  input.pensionableEmployment = Math.max(0, salary) + groupRrspMatch + planPensionable;
+  input.insurableEmployment = Math.max(0, salary) + (rules.groupRrspWithdrawable ? groupRrspMatch : 0) + planInsurable;
 
   const tax = calculateTax(input, p);
-  // Net tax, CPP and EI caused by an employer contribution, after any RRSP deduction it earns.
-  const taxOnBenefit = (benefit: number, rrspPart: number) =>
-    benefit > 0
-      ? tax.totalDeducted -
-        calculateTax({ ...input, employment: input.employment - benefit, rrspDeduction: rrspDeductionFor(rrspContributed - rrspPart) }, p)
-          .totalDeducted
-      : 0;
-  const employerMatchTax = taxOnBenefit(groupRrspMatch, groupRrspMatch);
-  const planMatchTax = taxOnBenefit(planMatch, st.planAccount === 'rrsp' ? planMatch : 0);
+  const withoutGroupMatch = calculateTax({ ...input, employment: input.employment - groupRrspMatch,
+    pensionableEmployment: input.pensionableEmployment - groupRrspMatch,
+    insurableEmployment: input.insurableEmployment - (rules.groupRrspWithdrawable ? groupRrspMatch : 0),
+    rrspDeduction: rrspDeductionFor(rrspContributed - groupRrspMatch) }, p);
+  const withoutPlanMatch = calculateTax({ ...input,
+    employment: input.employment - (otherEmploymentBenefit ? 0 : taxablePlanMatch), other: input.other - (otherEmploymentBenefit ? taxablePlanMatch : 0),
+    pensionableEmployment: input.pensionableEmployment - planPensionable,
+    insurableEmployment: input.insurableEmployment - planInsurable,
+    rrspDeduction: rrspDeductionFor(rrspContributed - (destination === 'rrsp' ? planMatch : 0)) }, p);
+  const employerMatchTax = tax.totalDeducted - withoutGroupMatch.totalDeducted;
+  const planTax = tax.totalDeducted - withoutPlanMatch.totalDeducted;
+  const unresolvedTax = planMatch > 0 && !dpsp && taxProvisional;
+  const planMatchTax = unresolvedTax ? null : planTax;
+  const planMatchIncomeTax = unresolvedTax ? null : tax.incomeTax - withoutPlanMatch.incomeTax;
+  const planMatchPayrollTax = planMatch > 0 && unknownBenefit && rules.planKind !== 'profitSharing' ? null : (tax.cppTotal - withoutPlanMatch.cppTotal) + (tax.ei - withoutPlanMatch.ei);
+  const planTaxRange: [number, number] = unresolvedTax ? [Math.min(0, planTax), Math.max(0, planTax)] : [planTax, planTax];
+  const investedByAccount: Record<string, number> = { ...contributions, pension: dcPension ? retirementContribution + employerMatch : 0 };
+  if (invalidAllocation) { investedByAccount.other -= planContribution; investedByAccount.unknown = planContribution; }
+  investedByAccount.rrsp += groupRrspMatch;
+  investedByAccount[destination] = (investedByAccount[destination] ?? 0) + planMatch;
   const taxNoDeductions = calculateTax({ ...input, rrspDeduction: 0, fhsaDeduction: 0 }, p);
   const taxNoConsulting = calculateTax(
     { ...input, selfEmployment: 0, foreignBusiness: 0, foreignTaxBusiness: 0 },
@@ -258,7 +268,7 @@ export function computeBudget(state: BudgetState): Budget {
   const consultingSetAside = Math.max(0, tax.totalDeducted - taxNoConsulting.totalDeducted);
 
   const step = 100;
-  const bumpSal = calculateTax({ ...input, employment: input.employment + step }, p);
+  const bumpSal = calculateTax({ ...input, employment: input.employment + step, pensionableEmployment: input.pensionableEmployment! + step, insurableEmployment: input.insurableEmployment! + step }, p);
   const bumpCon = calculateTax({ ...input, selfEmployment: input.selfEmployment + step }, p);
   const marginalSalary = (bumpSal.totalDeducted - tax.totalDeducted) / step;
   const marginalConsulting = (bumpCon.totalDeducted - tax.totalDeducted) / step;
@@ -309,7 +319,13 @@ export function computeBudget(state: BudgetState): Budget {
     });
   }
 
+  const payrollContributions = retirementContribution + planContribution;
+  const actualCashAfterPayroll = rules.incomeTaxWithheld !== null && rules.cppEiWithheld !== null
+    ? salary - positive(rules.incomeTaxWithheld) - positive(rules.cppEiWithheld) - payrollContributions : null;
   return {
+    employerAutomatic: plans.automatic, employerMatching: plans.matching,
+    planMatchIncomeTax, planMatchPayrollTax, planTaxRange, taxableBenefits, roomUsed, roomAvailable,
+    investedByAccount, plans, taxProvisional, actualCashAfterPayroll, taxYear: p.year, calendarMode: calendar,
     incomeLines,
     byKind,
     grossIncome,
@@ -364,12 +380,15 @@ export function projectSavings(state: BudgetState, b: Budget): ProjectionPoint[]
   const fhsaLifetime = state.tax.fhsaLifetimeLimit;
   let balance = 0;
   let contributed = 0;
-  let fhsaTotal = 0;
+  let fhsaTotal = positive(state.settings.rooms.fhsaLifetimeUsed);
   const out: ProjectionPoint[] = [{ year: 0, contributed: 0, growth: 0, balance: 0 }];
   for (let y = 1; y <= years; y++) {
-    const fhsa = Math.max(0, Math.min(b.contributions.fhsa, fhsaLifetime - fhsaTotal));
+    const nextState = { ...state, tax: { ...state.tax, year: state.tax.year + y - 1 },
+      settings: { ...state.settings, benefits: { ...state.settings.benefits, membershipYear: state.settings.benefits.membershipYear + y - 1 } } };
+    const next = y === 1 ? b : computeBudget(nextState);
+    const fhsa = Math.max(0, Math.min(next.contributions.fhsa, fhsaLifetime - fhsaTotal));
     fhsaTotal += fhsa;
-    const yearly = b.totalInvested - b.contributions.fhsa + fhsa;
+    const yearly = next.totalInvested - next.contributions.fhsa + fhsa;
     balance = balance * (1 + r) + yearly * (1 + r / 2);
     contributed += yearly;
     out.push({ year: y, contributed, growth: balance - contributed, balance });
@@ -418,5 +437,5 @@ export function fmt(n: number, digits = 0) {
     currency: 'CAD',
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
-  }).format(n);
+  }).format(Number(n.toFixed(8)));
 }

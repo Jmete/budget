@@ -15,7 +15,7 @@ type TabKey = 'summary' | (typeof TABS)[number]['key'];
  * Bottom tab bar for phones (hidden by CSS on wider screens). Keeps the monthly
  * result in view while filling out the form and jumps between sections.
  */
-export function MobileNav({ monthlyLeft }: { monthlyLeft: number }) {
+export function MobileNav({ monthlyLeft, calendarMode = false }: { monthlyLeft: number; calendarMode?: boolean }) {
   const [active, setActive] = useState<TabKey>('summary');
 
   // Scrollspy: the section crossing a line ~40% down the viewport is active.
@@ -49,7 +49,7 @@ export function MobileNav({ monthlyLeft }: { monthlyLeft: number }) {
         onClick={go('summary')}
       >
         <strong>{fmt(Math.abs(monthlyLeft))}</strong>
-        <span>{short ? 'short / mo' : 'left / mo'}</span>
+        <span>{calendarMode ? (short ? 'avg short / mo' : 'avg left / mo') : (short ? 'short / mo' : 'left / mo')}</span>
       </a>
       {TABS.map((t) => (
         <a key={t.key} href={`#${t.ids[0]}`} aria-current={active === t.key ? 'true' : undefined} onClick={go(t.ids[0])}>

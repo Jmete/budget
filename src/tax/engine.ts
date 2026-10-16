@@ -3,6 +3,9 @@ import type { Bracket, TaxParams } from './params';
 /** Annual C$ amounts that feed one tax calculation. */
 export interface TaxInput {
   employment: number;
+  /** Non-cash benefits can be taxable without being CPP pensionable or EI insurable. */
+  pensionableEmployment?: number;
+  insurableEmployment?: number;
   selfEmployment: number; // net profit; may be negative (a loss)
   other: number;
   eligibleDividends: number; // actual cash received
@@ -103,19 +106,21 @@ const clamp0 = (n: number) => Math.max(0, n);
 
 export function calculateTax(input: TaxInput, p: TaxParams): TaxResult {
   const E = clamp0(input.employment);
+  const pensionable = clamp0(input.pensionableEmployment ?? E);
+  const insurable = clamp0(input.insurableEmployment ?? E);
   const S = input.selfEmployment;
   const Spos = clamp0(S);
 
   // --- Employee CPP / EI -----------------------------------------------------
-  const empBand = Math.min(clamp0(E - p.cppBasicExemption), p.cppYmpe - p.cppBasicExemption);
+  const empBand = Math.min(clamp0(pensionable - p.cppBasicExemption), p.cppYmpe - p.cppBasicExemption);
   const cppEmployeeBase = empBand * p.cppBaseRate;
   const cppEmployeeEnhanced = empBand * p.cppFirstEnhancedRate;
-  const cppEmployee2 = Math.min(clamp0(E - p.cppYmpe), p.cppYampe - p.cppYmpe) * p.cpp2Rate;
-  const ei = Math.min(E, p.eiMaxInsurable) * p.eiRate;
+  const cppEmployee2 = Math.min(clamp0(pensionable - p.cppYmpe), p.cppYampe - p.cppYmpe) * p.cpp2Rate;
+  const ei = Math.min(insurable, p.eiMaxInsurable) * p.eiRate;
 
   // --- Self-employed CPP (both halves on earnings not already covered by salary)
-  const seBand = clamp0(Math.min(E + Spos, p.cppYmpe) - Math.max(E, p.cppBasicExemption));
-  const se2Band = clamp0(Math.min(E + Spos, p.cppYampe) - Math.max(E, p.cppYmpe));
+  const seBand = clamp0(Math.min(pensionable + Spos, p.cppYmpe) - Math.max(pensionable, p.cppBasicExemption));
+  const se2Band = clamp0(Math.min(pensionable + Spos, p.cppYampe) - Math.max(pensionable, p.cppYmpe));
   const cppSelfBase = seBand * p.cppBaseRate;
   const cppSelfDeductible =
     seBand * (p.cppBaseRate + 2 * p.cppFirstEnhancedRate) + se2Band * 2 * p.cpp2Rate;

@@ -5,7 +5,8 @@ import { expenseTree, incomeTree } from './components/charts/trees';
 import { ProjectionChart } from './components/charts/ProjectionChart';
 import { RateChart } from './components/charts/RateChart';
 import { SplitChart } from './components/charts/SplitChart';
-import { NumberField, SelectField, TextField } from './components/Fields';
+import { TextField } from './components/Fields';
+import { Benefits } from './components/Benefits';
 import { MobileNav } from './components/MobileNav';
 import { Readout } from './components/Readout';
 import { AddButton, ExpenseRows, GroupButton, IncomeRows, InvestmentRows, Section } from './components/Sections';
@@ -20,11 +21,10 @@ import {
   isGrouped,
   loadState,
   moveItem,
-  PLAN_ACCOUNTS,
-  RETIREMENT_TYPES,
   sanitizeState,
   saveState,
   uid,
+  updateTaxParams,
   type BudgetState,
   type ExpenseItem,
   type IncomeItem,
@@ -54,6 +54,22 @@ const GROUP_ORDER: Record<ListKey, readonly string[]> = {
 
 export default function App() {
   const [state, setState] = useState<BudgetState>(loadState);
+  const [showNotices, setShowNotices] = useState(() => {
+    try {
+      return localStorage.getItem('tb.showNotices') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const toggleNotices = () => {
+    const next = !showNotices;
+    setShowNotices(next);
+    try {
+      localStorage.setItem('tb.showNotices', String(next));
+    } catch {
+      // Keep the toggle working when browser storage is unavailable.
+    }
+  };
   const [theme, setTheme] = useState<Theme>(() =>
     document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
   );
@@ -141,7 +157,7 @@ export default function App() {
     });
   };
   const setSettings = (patch: Partial<Settings>) => setState((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
-  const setTax = (patch: Partial<TaxParams>) => setState((s) => ({ ...s, tax: { ...s.tax, ...patch } }));
+  const setTax = (patch: Partial<TaxParams>) => setState((s) => updateTaxParams(s, patch));
 
   // ---- config import / export
   const exportConfig = () => {
@@ -209,7 +225,7 @@ export default function App() {
         />
 
         <div className={`hud ${monthlyLeft < -0.5 ? 'is-neg' : ''}`} aria-hidden="true">
-          <span>Left / mo</span>
+          <span>{budget.calendarMode ? 'Year avg / mo' : 'Left / mo'}</span>
           <strong>{fmt(monthlyLeft)}</strong>
         </div>
 
@@ -265,17 +281,28 @@ export default function App() {
         <Readout b={budget} />
 
         {budget.warnings.length > 0 && (
-          <ul className="notices" aria-label="Notes about your plan">
-            {budget.warnings.map((w, i) => (
-              <li key={i} className={`notice ${w.level}`}>
-                <span className="status-icon" aria-hidden="true">
-                  {w.level === 'warning' ? '!' : 'i'}
-                </span>
-                <span className="sr-only">{w.level === 'warning' ? 'Warning:' : 'Note:'}</span>
-                {w.text}
-              </li>
-            ))}
-          </ul>
+          <div className="notices-panel">
+            <button
+              type="button"
+              className="btn ghost"
+              aria-expanded={showNotices}
+              aria-controls="plan-notices"
+              onClick={toggleNotices}
+            >
+              {showNotices ? 'Hide' : 'Show'} notes & warnings ({budget.warnings.length})
+            </button>
+            <ul id="plan-notices" className="notices" aria-label="Notes about your plan" hidden={!showNotices}>
+              {budget.warnings.map((w, i) => (
+                <li key={i} className={`notice ${w.level}`}>
+                  <span className="status-icon" aria-hidden="true">
+                    {w.level === 'warning' ? '!' : 'i'}
+                  </span>
+                  <span className="sr-only">{w.level === 'warning' ? 'Warning:' : 'Note:'}</span>
+                  {w.text}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div className="layout">
@@ -368,74 +395,7 @@ export default function App() {
                 </GroupButton>
               </div>
 
-              <div className="subpanels">
-                <fieldset className="param-group">
-                  <legend>Workplace retirement plan</legend>
-                  <p className="hint">
-                    {s.retirementType === 'dcPension'
-                      ? "Your contributions are deducted from taxable income. Your employer's aren't taxed, but they lower next year's RRSP room."
-                      : "Your contributions use RRSP room. Your employer's are taxed as salary, then deducted like your own."}
-                  </p>
-                  <SelectField hideLabel={false} label="Plan type" value={s.retirementType} options={RETIREMENT_TYPES} onChange={(retirementType) => setSettings({ retirementType })} />
-                  <NumberField hideLabel={false} label="You contribute (% of salary)" suffix="%" placeholder="e.g. 6" value={s.retirementPct} min={0} onChange={(retirementPct) => setSettings({ retirementPct })} />
-                  <NumberField hideLabel={false} label="Match rate" suffix="%" placeholder="e.g. 100" value={s.matchRate} min={0} onChange={(matchRate) => setSettings({ matchRate })} />
-                  <NumberField hideLabel={false} label="Up to % of salary" suffix="%" placeholder="e.g. 3" value={s.matchCapPct} min={0} onChange={(matchCapPct) => setSettings({ matchCapPct })} />
-                  <NumberField hideLabel={false} label="Annual maximum" prefix="$" placeholder="No cap" value={s.matchMax} min={0} onChange={(matchMax) => setSettings({ matchMax })} />
-                  <p className="derived">
-                    <span>You contribute</span>
-                    <strong>{fmt(budget.retirementContribution / 12)}/mo</strong>
-                  </p>
-                  <p className="derived">
-                    <span>Employer adds</span>
-                    <strong>{fmt(budget.employerMatch / 12)}/mo</strong>
-                  </p>
-                  {s.retirementType === 'dcPension' ? (
-                    <p className="derived">
-                      <span>Next year's RRSP room cut</span>
-                      <strong>{fmt(budget.pensionAdjustment)}/yr</strong>
-                    </p>
-                  ) : (
-                    <p className="derived">
-                      <span>Tax on the match</span>
-                      <strong>{fmt(budget.employerMatchTax / 12)}/mo</strong>
-                    </p>
-                  )}
-                </fieldset>
-                <fieldset className="param-group">
-                  <legend>Employee savings plan</legend>
-                  <p className="hint">
-                    Payroll share purchase or savings plan with an employer match. The match is a taxable benefit added to your salary.
-                  </p>
-                  <NumberField hideLabel={false} label="You contribute (% of salary)" suffix="%" placeholder="e.g. 6" value={s.planPct} min={0} onChange={(planPct) => setSettings({ planPct })} />
-                  <SelectField hideLabel={false} label="Held in" value={s.planAccount} options={PLAN_ACCOUNTS} onChange={(planAccount) => setSettings({ planAccount })} />
-                  <NumberField hideLabel={false} label="Match rate" suffix="%" placeholder="e.g. 50" value={s.planMatchRate} min={0} onChange={(planMatchRate) => setSettings({ planMatchRate })} />
-                  <NumberField hideLabel={false} label="Up to % of salary" suffix="%" placeholder="e.g. 6" value={s.planMatchCapPct} min={0} onChange={(planMatchCapPct) => setSettings({ planMatchCapPct })} />
-                  <NumberField hideLabel={false} label="Annual maximum" prefix="$" placeholder="No cap" value={s.planMatchMax} min={0} onChange={(planMatchMax) => setSettings({ planMatchMax })} />
-                  <p className="derived">
-                    <span>You contribute</span>
-                    <strong>{fmt(budget.planContribution / 12)}/mo</strong>
-                  </p>
-                  <p className="derived">
-                    <span>Employer adds</span>
-                    <strong>{fmt(budget.planMatch / 12)}/mo</strong>
-                  </p>
-                  <p className="derived">
-                    <span>Tax on the match</span>
-                    <strong>{fmt(budget.planMatchTax / 12)}/mo</strong>
-                  </p>
-                </fieldset>
-                <fieldset className="param-group">
-                  <legend>Contribution room</legend>
-                  <p className="hint">From your CRA Notice of Assessment or My Account. Used to cap deductions and flag over-contributions.</p>
-                  <NumberField hideLabel={false} label="RRSP room" prefix="$" placeholder="Unknown" value={s.rrspRoom} min={0} onChange={(rrspRoom) => setSettings({ rrspRoom })} />
-                  <NumberField hideLabel={false} label="FHSA room" prefix="$" placeholder={DEFAULT_TAX.fhsaAnnualLimit.toLocaleString('en-CA')} value={s.fhsaRoom} min={0} onChange={(fhsaRoom) => setSettings({ fhsaRoom })} />
-                  <NumberField hideLabel={false} label="TFSA room" prefix="$" placeholder="Unknown" value={s.tfsaRoom} min={0} onChange={(tfsaRoom) => setSettings({ tfsaRoom })} />
-                  <p className="derived">
-                    <span>Deducted from income</span>
-                    <strong>{fmt(budget.rrspDeduction + budget.fhsaDeduction)}/yr</strong>
-                  </p>
-                </fieldset>
-              </div>
+              <Benefits state={state} budget={budget} onSettings={setSettings} onYear={year => setTax({ year })} />
             </Section>
 
             <Section index="03" id="essentials" title="Essentials" total={budget.essentials / 12} tone="--s-essentials">
@@ -515,7 +475,7 @@ export default function App() {
               state={state}
               onSettings={setSettings}
               onTax={setTax}
-              onResetTax={() => setState((st) => ({ ...st, tax: structuredClone(DEFAULT_TAX) }))}
+              onResetTax={() => setTax(structuredClone(DEFAULT_TAX))}
               fxStatus={fxStatus}
               onUpdateRates={() => void updateRates(true)}
             />
@@ -532,7 +492,7 @@ export default function App() {
         <p>Your inputs stay in this browser's local storage and are never uploaded.</p>
       </footer>
 
-      <MobileNav monthlyLeft={monthlyLeft} />
+      <MobileNav monthlyLeft={monthlyLeft} calendarMode={budget.calendarMode} />
 
       <div className={`toast ${toast ? 'show' : ''} ${toast?.error ? 'error' : ''}`} role="status" aria-live="polite">
         {toast?.text}

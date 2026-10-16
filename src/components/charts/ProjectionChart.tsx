@@ -33,7 +33,7 @@ export function ProjectionChart({ state, b }: { state: BudgetState; b: Budget })
     setHoverI(Math.round(((e.clientX - rect.left) / rect.width) * years));
   };
 
-  const empty = b.totalInvested <= 0;
+  const empty = last.contributed <= 0;
 
   return (
     <ChartCard
@@ -42,7 +42,7 @@ export function ProjectionChart({ state, b }: { state: BudgetState; b: Budget })
       subtitle={
         empty
           ? undefined
-          : `${fmt(b.totalInvested / 12)}/month at ${state.settings.returnRate}% could grow to ${fmt(last.balance)} in ${years} years. ${fmt(last.growth)} of that is investment growth.`
+          : `${fmt(last.balance)} after ${years} years at ${state.settings.returnRate}%. Plan starts and membership matching progress each year; salary, limits and personal savings stay fixed. Future account room is not verified.`
       }
       legend={[
         { label: 'Projected balance', color: 'var(--s-savings)', line: true },

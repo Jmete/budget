@@ -572,6 +572,12 @@ main {
 }
 
 /* Notices */
+.notices-panel {
+  margin-top: 16px;
+}
+.notices[hidden] {
+  display: none;
+}
 .notices {
   list-style: none;
   padding: 0;
@@ -2059,3 +2065,16 @@ main {
     background: #fff;
   }
 }
+
+/* Benefit inputs keep the existing field and panel styles. */
+.benefit-timing { margin-top: 1.5rem; }
+.benefit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.benefits-panels { grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); }
+.benefits-panels .derived { flex-wrap: wrap; gap: .35rem; }
+.benefits-panels .derived strong { font-size: .8rem; }
+.benefits-panels details, .benefit-timing details { margin: 1rem 0; }
+.benefits-panels summary, .benefit-timing summary { cursor: pointer; color: var(--ink-2); margin-bottom: 1rem; }
+.benefits-panels details .field { margin-bottom: .8rem; }
+.room-account { border-top: 1px solid var(--line); padding-top: .8rem; margin-top: 1rem; }
+.room-account h3 { margin: 0 0 .8rem; font-size: .9rem; }
+.benefits-panels .check { align-items: flex-start; white-space: normal; }
