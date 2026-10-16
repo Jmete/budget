@@ -1,3 +1,5 @@
+import { DEFAULT_TAX } from '../tax/params';
+
 /** Plan rules are separate from personal elections and CRA room amounts. */
 export interface BenefitRules {
   planKind: 'generic' | 'profitSharing';
@@ -43,6 +45,10 @@ export interface RoomDetails {
   tfsaQualifyingYears: string;
   tfsaPastContributions: number | null;
   tfsaPastWithdrawals: number | null;
+  /** RRSP estimate inputs: unused room carried forward, last year's earned income and pension adjustment. */
+  rrspCarryforward: number | null;
+  rrspPriorEarnedIncome: number | null;
+  rrspPriorPensionAdjustment: number | null;
   fhsaState: 'unknown' | 'ineligible' | 'notOpened' | 'opened';
   fhsaOpened: string;
   fhsaEligibilityConfirmed: boolean;
@@ -61,9 +67,10 @@ export const DEFAULT_BENEFITS: BenefitRules = {
   incomeTaxWithheld: null, cppEiWithheld: null, residency: 'fullYear',
 };
 export const DEFAULT_ROOMS: RoomDetails = {
-  year: 2026, rrspStatus: 'unknown', tfsaStatus: 'unknown', fhsaStatus: 'unknown',
+  year: DEFAULT_TAX.year, rrspStatus: 'unknown', tfsaStatus: 'unknown', fhsaStatus: 'unknown',
   rrspPriorUnused: 0, rrspElsewhere: 0, tfsaElsewhere: 0, fhsaElsewhere: 0,
   tfsaQualifyingYears: '', tfsaPastContributions: null, tfsaPastWithdrawals: null,
+  rrspCarryforward: null, rrspPriorEarnedIncome: null, rrspPriorPensionAdjustment: null,
   fhsaState: 'unknown', fhsaOpened: '', fhsaEligibilityConfirmed: false,
   fhsaCarryforward: null, fhsaLifetimeUsed: null,
 };

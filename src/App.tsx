@@ -33,7 +33,7 @@ import {
 } from './state/model';
 import { fetchLatestRates } from './state/fx';
 import { computeBudget, fmt } from './tax/budget';
-import { DEFAULT_TAX, type TaxParams } from './tax/params';
+import { defaultTaxFor, paramsForYear, type TaxParams } from './tax/params';
 
 type Theme = 'dark' | 'light';
 type ListKey = 'income' | 'investments' | 'essentials' | 'lifestyle';
@@ -395,7 +395,7 @@ export default function App() {
                 </GroupButton>
               </div>
 
-              <Benefits state={state} budget={budget} onSettings={setSettings} onYear={year => setTax({ year })} />
+              <Benefits state={state} budget={budget} onSettings={setSettings} onYear={(year) => setState((s) => updateTaxParams(s, paramsForYear(s.tax, year)))} />
             </Section>
 
             <Section index="03" id="essentials" title="Essentials" total={budget.essentials / 12} tone="--s-essentials">
@@ -475,7 +475,7 @@ export default function App() {
               state={state}
               onSettings={setSettings}
               onTax={setTax}
-              onResetTax={() => setTax(structuredClone(DEFAULT_TAX))}
+              onResetTax={() => setTax(structuredClone(defaultTaxFor(state.tax.year)))}
               fxStatus={fxStatus}
               onUpdateRates={() => void updateRates(true)}
             />

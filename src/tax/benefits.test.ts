@@ -1,12 +1,13 @@
+import { state2026 } from '../test/state2026';
 import { describe, expect, it } from 'vitest';
-import { createDefaultState, sanitizeState } from '../state/model';
+import { sanitizeState } from '../state/model';
 import { computeBudget, projectSavings, fmt } from './budget';
 import { calculateTax, EMPTY_INPUT } from './engine';
 import { addMonths, yearFraction } from './plans';
 import { contributionRooms, estimateTfsaRoom } from './rooms';
 
 function workplacePlan(salary = 125000, pct = 6, membershipYear = 1) {
-  const s = createDefaultState();
+  const s = state2026();
   s.income[0].amount = salary;
   Object.assign(s.settings, { retirementType: 'dcPension', retirementPct: pct, matchRate: 50, matchCapPct: 6, planPct: 6, planMatchRate: 50, planMatchCapPct: 6 });
   Object.assign(s.settings.benefits, { automaticPct: 3, employerEarningsCap: 150000, retirementEmployeeMaxPct: 9, savingsEmployeeMaxPct: 10, membershipYear, matchStepYear: 5, laterMatchRate: 100, retirementWaitMonths: 3, savingsWaitMonths: 6 });
@@ -329,12 +330,12 @@ describe('saved state compatibility', () => {
   });
 });
 
-describe('confirmed October 6 hire and employee savings plan account choices', () => {
+describe('mid-month hire and employee savings plan account choices', () => {
   it('uses the exact supplied start date, not the first day of October', () => {
-    const s = workplacePlan(); Object.assign(s.settings.benefits, { mode: 'calendar', employmentStart: '2026-10-06', planKind: 'profitSharing' });
+    const s = workplacePlan(); Object.assign(s.settings.benefits, { mode: 'calendar', employmentStart: '2026-10-13', planKind: 'profitSharing' });
     const b = computeBudget(s);
-    expect(b.plans.dates).toEqual({ retirement: '2027-01-06', savings: '2027-04-06' });
-    expect(b.salary).toBeCloseTo(125000 * (26 / 31 + 2) / 12);
+    expect(b.plans.dates).toEqual({ retirement: '2027-01-13', savings: '2027-04-13' });
+    expect(b.salary).toBeCloseTo(125000 * (19 / 31 + 2) / 12);
     expect(b.totalInvested).toBe(0);
   });
   it.each(['epsp', 'dpsp'] as const)('splits employee funds 20/30/50 independently of %s employer funds', employerAccount => {

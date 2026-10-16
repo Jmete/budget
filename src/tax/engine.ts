@@ -77,7 +77,7 @@ export interface TaxResult {
   afterTax: number; // totalIncome (cash) - totalDeducted
 }
 
-export function bracketTax(income: number, brackets: Bracket[]): number {
+function bracketTax(income: number, brackets: Bracket[]): number {
   let tax = 0;
   let prev = 0;
   for (const b of brackets) {

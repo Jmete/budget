@@ -32,7 +32,7 @@ export function yearFraction(year: number, start: string, end = `${year + 1}-01-
   return Math.min(1, result);
 }
 
-export function planDates(st: Settings) {
+function planDates(st: Settings) {
   const b = st.benefits;
   const later = (date: string) => validDate(b.employmentStart) && validDate(date)
     ? (date > b.employmentStart ? date : b.employmentStart) : date;
@@ -82,7 +82,7 @@ export function calculatePlans(st: Settings, p: TaxParams, annualSalary: number)
   const savingsEmployee = savingsBase * savingsRate * savingsFraction;
   let savingsMatch = capped(savingsBase * Math.min(savingsRate, st.planMatchCapPct === null ? savingsRate : positive(st.planMatchCapPct) / 100) * positive(st.planMatchRate) / 100 * savingsFraction, st.planMatchMax);
   // A DPSP has its own pension credit and annual limit. EPSP does not.
-  if (b.employerAccount === 'dpsp') savingsMatch = Math.min(savingsMatch, p.moneyPurchaseLimit / 2, earnings * employmentFraction * .18);
+  if (b.employerAccount === 'dpsp') savingsMatch = Math.min(savingsMatch, p.moneyPurchaseLimit / 2, earnings * employmentFraction * p.rrspEarnedIncomeRate);
   const dpspLimited = st.retirementType === 'dcPension' && b.employerAccount === 'dpsp' && employee + automatic + matching + savingsMatch > dcLimit;
   if (dpspLimited) {
     if (b.limitAllocation === 'proportional') {

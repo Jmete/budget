@@ -1,7 +1,7 @@
 import { FOREIGN_CURRENCIES, type BudgetState, type Settings } from '../state/model';
 
 export type FxStatus = { state: 'idle' } | { state: 'loading' } | { state: 'error'; message: string };
-import { DEFAULT_TAX, type Bracket, type TaxParams } from '../tax/params';
+import { defaultTaxFor, type Bracket, type TaxParams } from '../tax/params';
 import { NumberField } from './Fields';
 
 type NumKey = { [K in keyof TaxParams]: TaxParams[K] extends number ? K : never }[keyof TaxParams];
@@ -30,7 +30,7 @@ function ParamField({
       prefix={percent ? undefined : '$'}
       suffix={percent ? '%' : undefined}
       maxDigits={4}
-      onChange={(n) => onChange({ [k]: n == null ? DEFAULT_TAX[k] : percent ? n / 100 : n } as Partial<TaxParams>)}
+      onChange={(n) => onChange({ [k]: n == null ? defaultTaxFor(tax.year)[k] : percent ? n / 100 : n } as Partial<TaxParams>)}
     />
   );
 }
@@ -220,7 +220,7 @@ export function Assumptions({
           </fieldset>
         </div>
         <button type="button" className="btn ghost" onClick={onResetTax}>
-          Restore {DEFAULT_TAX.year} defaults
+          Restore {defaultTaxFor(tax.year).year} defaults
         </button>
       </details>
     </>

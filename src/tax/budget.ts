@@ -1,4 +1,5 @@
 import {
+  INCOME_ORDER,
   perYear,
   type AccountKind,
   type BudgetState,
@@ -9,6 +10,7 @@ import {
 import { calculatePlans, positive, yearFraction, validDate } from './plans';
 import { contributionRooms } from './rooms';
 import { calculateTax, EMPTY_INPUT, marginalBracketRate, type TaxInput, type TaxResult } from './engine';
+import { hasBuiltInTax, PENDING_2027 } from './params';
 
 export interface Warning {
   level: 'info' | 'warning';
@@ -23,19 +25,18 @@ export interface IncomeLine {
 
 export interface Budget {
   incomeLines: Record<string, IncomeLine>;
-  byKind: Record<IncomeKind, number>;
   grossIncome: number; // cash in, before anything (incl. tax-free)
-  taxableSources: number; // gross less tax-free
   salary: number;
   consulting: number;
 
   tax: TaxResult;
   taxNoDeductions: TaxResult;
-  taxNoConsulting: TaxResult;
   afterTax: number; // annual, incl. tax-free income
   deductionSavings: number; // RRSP + FHSA tax savings
-  consultingSetAside: number; // annual tax + CPP attributable to consulting income
-  effectiveRate: number; // (income tax + CPP + EI + foreign) / gross
+  /** Savings if contributions to accounts with unknown room were fully deductible; equals deductionSavings when room is known. */
+  potentialDeductionSavings: number;
+  consultingSetAside: number; // annual Canadian tax + CPP attributable to consulting income (foreign withholding excluded)
+  effectiveRate: number; // (income tax + CPP + EI + foreign) / taxable gross income
   marginalSalary: number;
   marginalConsulting: number;
 
@@ -56,7 +57,6 @@ export interface Budget {
   planMatchIncomeTax: number | null;
   planMatchPayrollTax: number | null;
   planTaxRange: [number, number];
-  taxableBenefits: number;
   roomUsed: { rrsp: number; tfsa: number; fhsa: number };
   roomAvailable: ReturnType<typeof contributionRooms>;
   investedByAccount: Record<string, number>;
@@ -69,11 +69,12 @@ export interface Budget {
   essentials: number;
   lifestyle: number;
   expenses: number;
-  byCategory: { category: string; annual: number }[];
+  /** Spending buckets for the savings-only guide; all debt payments count as needs. */
+  needs: number;
+  wants: number;
 
-  cashAfterContributions: number;
   unallocated: number; // annual; negative = shortfall
-  savingsRate: number; // (personal contributions + max(0, unallocated)) / after-tax
+  savingsRate: number; // personal contributions / after-tax; excludes leftover and employer contributions
 
   warnings: Warning[];
 }
@@ -145,18 +146,12 @@ export function computeBudget(state: BudgetState): Budget {
   if (calendar && !validDate(rules.employmentStart)) warnings.push({ level: 'warning', text: 'Enter your employment start date. Calendar-year salary and plan contributions are excluded until it is known.' });
   if (calendar) warnings.push({ level: 'info', text: 'Calendar-year salary uses complete months / 12 and calendar days for partial months. Monthly figures are annual totals / 12, not the amount on an active-month payslip. Income rows are annualized; other income, investments and expenses remain the annual totals you enter.' });
   if (rules.residency === 'partYearUnknown') warnings.push({ level: 'warning', text: 'Part-year Canadian residency: tax is provisional. This engine uses full-year personal credits and does not determine residency, pre-arrival world income or newcomer credit entitlements. Adjust Tax assumptions using your return or adviser; withholding is separate below.' });
-  if (p.year !== 2026) warnings.push({ level: 'warning', text: `Planning year ${p.year}: tax rates and annual limits do not automatically update. Review Tax assumptions for that year; saved contribution room only applies to its stated year.` });
+  const builtInYear = hasBuiltInTax(p.year);
+  if (!builtInYear) warnings.push({ level: 'warning', text: `Planning year ${p.year}: no built-in tax rates for this year. Review Tax assumptions; saved contribution room only applies to its stated year.` });
+  if (p.year === 2027) warnings.push({ level: 'info', text: `2027 uses the published EI rates and RRSP limit. ${PENDING_2027} stay at 2026 values until CRA publishes 2027 indexation (usually in November).` });
   // --- Income -----------------------------------------------------------------
   const incomeLines: Record<string, IncomeLine> = {};
-  const byKind = {
-    employment: 0,
-    selfEmployment: 0,
-    other: 0,
-    eligibleDividend: 0,
-    nonEligibleDividend: 0,
-    capitalGain: 0,
-    taxFree: 0,
-  } as Record<IncomeKind, number>;
+  const byKind = Object.fromEntries(INCOME_ORDER.map((k) => [k, 0])) as Record<IncomeKind, number>;
   for (const item of state.income) {
     const annualCad = annual(item.amount, item.freq) * toCad(item, st.fx) * (item.kind === 'employment' ? employmentFraction : 1);
     const foreignTax = item.kind === 'taxFree' ? 0 : Math.max(0, annualCad) * ((item.foreignTaxPct ?? 0) / 100);
@@ -204,7 +199,7 @@ export function computeBudget(state: BudgetState): Budget {
   const rrspDeductionFor = (contributed: number) => Math.min(positive(contributed) + positive(st.rooms.rrspPriorUnused), roomAvailable.rrsp ?? 0);
   const rrspDeduction = rrspDeductionFor(rrspContributed);
   const fhsaDeduction = Math.min(contributions.fhsa, roomAvailable.fhsa ?? 0);
-  let taxProvisional = invalidAllocation || (calendar && !validDate(rules.employmentStart)) || rules.residency === 'partYearUnknown' || p.year !== 2026 || (planMatch > 0 && unknownBenefit);
+  let taxProvisional = invalidAllocation || (calendar && !validDate(rules.employmentStart)) || rules.residency === 'partYearUnknown' || !builtInYear || (planMatch > 0 && unknownBenefit);
   for (const k of ['rrsp', 'tfsa', 'fhsa'] as const) {
     const available = k === 'rrsp' ? roomAvailable.rrspNewContributions : roomAvailable[k];
     if (available === null) {
@@ -261,11 +256,19 @@ export function computeBudget(state: BudgetState): Budget {
     { ...input, selfEmployment: 0, foreignBusiness: 0, foreignTaxBusiness: 0 },
     p,
   );
+  // Foreign tax withheld at source is already paid, so it is not part of the set-aside.
+  const domesticTax = (t: TaxResult) => t.totalDeducted - t.foreignTaxPaid;
 
   // Employer contributions are taxed but never reach your bank account.
   const afterTax = tax.afterTax + byKind.taxFree - taxableBenefits;
   const deductionSavings = taxNoDeductions.totalDeducted - tax.totalDeducted;
-  const consultingSetAside = Math.max(0, tax.totalDeducted - taxNoConsulting.totalDeducted);
+  // What unknown room would be worth once confirmed: unknown RRSP room deducts everything
+  // contributed; unknown FHSA room deducts up to the annual limit.
+  const potentialTax = calculateTax({ ...input,
+    rrspDeduction: roomAvailable.rrsp === null ? positive(rrspContributed) + positive(st.rooms.rrspPriorUnused) : rrspDeduction,
+    fhsaDeduction: roomAvailable.fhsa === null ? Math.min(contributions.fhsa, p.fhsaAnnualLimit) : fhsaDeduction }, p);
+  const potentialDeductionSavings = taxNoDeductions.totalDeducted - potentialTax.totalDeducted;
+  const consultingSetAside = Math.max(0, domesticTax(tax) - domesticTax(taxNoConsulting));
 
   const step = 100;
   const bumpSal = calculateTax({ ...input, employment: input.employment + step, pensionableEmployment: input.pensionableEmployment! + step, insurableEmployment: input.insurableEmployment! + step }, p);
@@ -299,18 +302,12 @@ export function computeBudget(state: BudgetState): Budget {
   const essentials = sumExpenses(state.essentials);
   const lifestyle = sumExpenses(state.lifestyle);
   const expenses = essentials + lifestyle;
-  const cat = new Map<string, number>();
-  for (const e of [...state.essentials, ...state.lifestyle]) {
-    const a = annual(e.amount, e.freq);
-    if (a > 0) cat.set(e.category, (cat.get(e.category) ?? 0) + a);
-  }
-  const byCategory = [...cat.entries()]
-    .map(([category, annual]) => ({ category, annual }))
-    .sort((a, b) => b.annual - a.annual);
+  const lifestyleDebt = sumExpenses(state.lifestyle.filter((e) => e.category === 'Debt' || e.category === 'Extra debt repayment'));
+  const needs = essentials + lifestyleDebt;
+  const wants = lifestyle - lifestyleDebt;
 
-  const cashAfterContributions = afterTax - personalContributions;
-  const unallocated = cashAfterContributions - expenses;
-  const savingsRate = afterTax > 0 ? (personalContributions + Math.max(0, unallocated)) / afterTax : 0;
+  const unallocated = afterTax - personalContributions - expenses;
+  const savingsRate = afterTax > 0 ? personalContributions / afterTax : 0;
 
   if (unallocated < -0.5) {
     warnings.unshift({
@@ -324,19 +321,17 @@ export function computeBudget(state: BudgetState): Budget {
     ? salary - positive(rules.incomeTaxWithheld) - positive(rules.cppEiWithheld) - payrollContributions : null;
   return {
     employerAutomatic: plans.automatic, employerMatching: plans.matching,
-    planMatchIncomeTax, planMatchPayrollTax, planTaxRange, taxableBenefits, roomUsed, roomAvailable,
+    planMatchIncomeTax, planMatchPayrollTax, planTaxRange, roomUsed, roomAvailable,
     investedByAccount, plans, taxProvisional, actualCashAfterPayroll, taxYear: p.year, calendarMode: calendar,
     incomeLines,
-    byKind,
     grossIncome,
-    taxableSources,
     salary,
     consulting,
     tax,
     taxNoDeductions,
-    taxNoConsulting,
     afterTax,
     deductionSavings,
+    potentialDeductionSavings,
     consultingSetAside,
     effectiveRate,
     marginalSalary,
@@ -356,8 +351,8 @@ export function computeBudget(state: BudgetState): Budget {
     essentials,
     lifestyle,
     expenses,
-    byCategory,
-    cashAfterContributions,
+    needs,
+    wants,
     unallocated,
     savingsRate,
     warnings,

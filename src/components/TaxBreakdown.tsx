@@ -32,11 +32,11 @@ export function TaxBreakdown({ b }: { b: Budget }) {
   const rows = ROWS.filter(([, pick, o]) => !o?.hideZero || pick(a) > 0.5 || pick(n) > 0.5);
 
   return (
-    <section className="panel analysis" aria-labelledby="tax-title">
+    <section className="panel analysis" id="tax" aria-labelledby="tax-title">
       <header className="panel-head">
         <h2 id="tax-title">Tax calculation</h2>
-        <p>{b.taxYear} federal and Ontario liability estimate, annual C$. Compare RRSP/FHSA deductions; the RPP deduction is included in both columns. This is not payroll withholding.</p>
-        {b.taxProvisional && <p className="hint">Provisional: resolve the plan, room or residency warnings before relying on these amounts.</p>}
+        <p>Estimated {b.taxYear} federal and Ontario tax, annual C$, with and without your RRSP/FHSA deductions. Not payroll withholding.</p>
+        {b.taxProvisional && <p className="hint">Provisional until the plan, room or residency notes are resolved.</p>}
       </header>
       <table className="tax-table">
         <thead>
@@ -54,7 +54,7 @@ export function TaxBreakdown({ b }: { b: Budget }) {
               <td className="r">{o?.neg && pick(n) > 0 ? `−${fmt(pick(n))}` : fmt(pick(n))}</td>
             </tr>
           ))}
-          <tr><th scope="row">Cash income after estimated tax (excludes employer investments)</th><td className="r">{fmt(b.afterTax)}</td><td className="r">{fmt(b.afterTax - b.deductionSavings)}</td></tr>
+          <tr><th scope="row">Take-home cash (excludes employer contributions)</th><td className="r">{fmt(b.afterTax)}</td><td className="r">{fmt(b.afterTax - b.deductionSavings)}</td></tr>
           <tr><th scope="row">Employee payroll plan contributions</th><td className="r" colSpan={2}>{fmt(b.retirementContribution + b.planContribution)}</td></tr>
           <tr className="delta">
             <th scope="row">Tax saved by deductions</th>

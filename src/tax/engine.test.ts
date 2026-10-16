@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calculateTax, EMPTY_INPUT } from './engine';
-import { DEFAULT_TAX } from './params';
+import { TAX_2026 } from './params';
 
 // Expected values reproduce the formulas of the original Excel planner.
 const cases: [number, number, number, number, number][] = [
@@ -16,7 +16,7 @@ describe('calculateTax matches the spreadsheet', () => {
   it.each(cases)('salary %d, consulting %d, RRSP %d, FHSA %d', (employment, selfEmployment, rrsp, fhsa, expected) => {
     const r = calculateTax(
       { ...EMPTY_INPUT, employment, selfEmployment, rrspDeduction: rrsp, fhsaDeduction: fhsa },
-      DEFAULT_TAX,
+      TAX_2026,
     );
     expect(r.afterTax).toBeCloseTo(expected, 0);
   });

@@ -1,7 +1,7 @@
 # Toronto Budget
 
 A budget planner for someone living in Toronto. Enter your salary, consulting income, investments and expenses to see
-take-home pay, 2026 federal and Ontario tax, CPP/EI, and what is left each month.
+take-home pay, federal and Ontario tax, CPP/EI, and what is left each month.
 
 ## Features
 
@@ -19,8 +19,16 @@ take-home pay, 2026 federal and Ontario tax, CPP/EI, and what is left each month
   them between computers.
 - Dark mode by default, with a light mode.
 
-Every tax rate and limit can be edited under **Assumptions → 2026 tax rates and limits** and is saved in the exported
-config.
+The 50/30/20 comparison uses after-tax income before personal payroll savings. Only personal savings count
+toward the 20% target; all debt payments count as needs, and unallocated cash remains separate. This is a
+savings-only adaptation: the usual rule also counts debt payments above the minimum toward 20%. Employer contributions appear in
+the dollar total for planned savings and the growth projection, but not in the 50/30/20 percentages. The planned
+saving rate also excludes unallocated cash, employer contributions and debt payments.
+
+The default planning year is 2027. It uses the published 2027 EI rates and RRSP limit; other figures stay at their 2026
+values until CRA publishes the 2027 indexation in November. Built-in 2026 figures are also available: set the planning
+year to 2026. Every tax rate and limit can be edited under **Assumptions → 2027 tax rates and limits** and is saved in the
+exported config.
 
 ## Develop
 
@@ -40,6 +48,7 @@ etc.), and it treats foreign tax credits simply. Check with a Canadian tax profe
 
 ## Workplace plans and contribution room
 
-Enter your workplace pension and savings plan details under **Savings & investing**, including contribution rates, employer matching, waiting periods and caps. Full-year monthly planning is the default. Confirm employee allocation and the separate employer account; select calendar-year mode only when you want date-based proration. Room stays unknown until verified or estimated; an unopened FHSA creates no room.
-
-See [the benefits audit](docs/benefits-audit.md) for the calculation map, CRA sources, before-and-after figures, and remaining plan/residency assumptions.
+Under **Savings & investing**, enter your workplace pension and savings plan: contribution rates, employer automatic
+and matching contributions, waiting periods and caps. The default is a typical full year divided by 12; switch to the
+calendar year to prorate from a start date. RRSP, TFSA and FHSA room stays unknown (no deduction is assumed) until you
+enter a verified amount or an estimate, and an unopened FHSA has no room.

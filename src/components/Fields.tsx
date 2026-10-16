@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
-const formatNumber = (n: number | null, maxDigits = 2) =>
-  n == null ? '' : n.toLocaleString('en-CA', { maximumFractionDigits: maxDigits });
+const formatNumber = (n: number | null, maxDigits = 2, grouping = true) =>
+  n == null ? '' : n.toLocaleString('en-CA', { maximumFractionDigits: maxDigits, useGrouping: grouping });
 
 const parseNumber = (text: string): number | null | undefined => {
   const cleaned = text.replace(/[,$\s%]/g, '');
@@ -22,6 +22,8 @@ interface NumberFieldProps {
   min?: number;
   className?: string;
   maxDigits?: number;
+  /** Thousands separators; off for values like years. */
+  grouping?: boolean;
 }
 
 /**
@@ -39,17 +41,18 @@ export function NumberField({
   min,
   className = '',
   maxDigits = 2,
+  grouping = true,
 }: NumberFieldProps) {
   const id = useId();
   const [focused, setFocused] = useState(false);
-  const [text, setText] = useState(() => formatNumber(value, maxDigits));
+  const [text, setText] = useState(() => formatNumber(value, maxDigits, grouping));
   const lastValue = useRef(value);
 
   // Pick up external changes (import, reset) while not editing.
   useEffect(() => {
-    if (!focused && value !== lastValue.current) setText(formatNumber(value, maxDigits));
+    if (!focused && value !== lastValue.current) setText(formatNumber(value, maxDigits, grouping));
     lastValue.current = value;
-  }, [value, focused, maxDigits]);
+  }, [value, focused, maxDigits, grouping]);
 
   return (
     <div className={`field num ${className}`}>
@@ -72,7 +75,7 @@ export function NumberField({
           }}
           onBlur={() => {
             setFocused(false);
-            setText(formatNumber(value, maxDigits));
+            setText(formatNumber(value, maxDigits, grouping));
           }}
           onChange={(e) => {
             setText(e.target.value);

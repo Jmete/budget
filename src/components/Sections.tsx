@@ -287,7 +287,7 @@ export function ExpenseRows({
         return (
           <div className={`row ${reorder.rowClass(index)}`} role="row" key={item.id} data-drag-row style={reorder.rowStyle(index)}>
             <TextField className="c-name" label="Expense name" value={item.name} placeholder="Expense" onChange={(name) => onChange(item.id, { name })} />
-            <SelectField className="c-kind" label="Category" value={item.category} options={EXPENSE_CATEGORIES} onChange={(category) => onChange(item.id, { category })} />
+            <SelectField className="c-kind" label="Category" value={item.category} options={EXPENSE_CATEGORIES.map(value => ({ value, label: value === 'Debt' ? 'Debt (minimum payments)' : value === 'Extra debt repayment' ? 'Debt overpayments' : value }))} onChange={(category) => onChange(item.id, { category })} />
             <NumberField className="c-amount" label={`${item.name || 'Expense'} amount`} prefix="$" value={item.amount} min={0} onChange={(amount) => onChange(item.id, { amount })} />
             <SelectField className="c-freq" label="Frequency" value={item.freq} options={FREQ_OPTIONS} onChange={(freq) => onChange(item.id, { freq })} />
             <span className="c-mo r" role="cell">

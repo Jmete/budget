@@ -1,16 +1,76 @@
+import { state2026 } from '../test/state2026';
 import { describe, expect, it } from 'vitest';
-import { createDefaultState, sanitizeState, type BudgetState } from '../state/model';
+import { sanitizeState, type BudgetState } from '../state/model';
 import { computeBudget } from './budget';
 
 function withIncome(patch: (s: BudgetState) => void) {
-  const s = createDefaultState();
+  const s = state2026();
   patch(s);
   return s;
 }
 
 describe('computeBudget', () => {
+  it('counts only personal contributions in the saving rate, not leftover cash or employer contributions', () => {
+    const s = state2026();
+    s.income[0].amount = 100000;
+    s.settings.retirementType = 'dcPension';
+    s.settings.retirementPct = 5;
+    s.settings.matchRate = 100;
+    s.investments.find(i => i.kind === 'tfsa')!.amount = 200;
+    const b = computeBudget(s);
+    expect(b.unallocated).toBeGreaterThan(0);
+    expect(b.personalContributions).toBe(7400);
+    expect(b.employerMatch).toBe(5000);
+    expect(b.savingsRate).toBeCloseTo(7400 / b.afterTax);
+    expect(b.totalInvested).toBe(12400);
+    expect(b.afterTax).toBeCloseTo(b.personalContributions + b.expenses + b.unallocated);
+  });
+
+  it('does not treat an entirely unallocated income as savings', () => {
+    const s = state2026();
+    s.income[0].amount = 60000;
+    const b = computeBudget(s);
+    expect(b.unallocated).toBe(b.afterTax);
+    expect(b.savingsRate).toBe(0);
+    expect(b.totalInvested).toBe(0);
+  });
+
+  it('classifies debt payments once, without changing cash flow or invested savings', () => {
+    const s = state2026();
+    s.income[0].amount = 100000;
+    s.essentials = [
+      { id: 'rent', name: 'Rent', category: 'Housing', amount: 1000, freq: 'month' },
+      { id: 'min', name: 'Minimum payment', category: 'Debt', amount: 100, freq: 'month' },
+      { id: 'extra', name: 'Extra payment', category: 'Extra debt repayment', amount: 50, freq: 'week' },
+    ];
+    s.lifestyle = [
+      { id: 'fun', name: 'Fun', category: 'Entertainment', amount: 200, freq: 'month' },
+      { id: 'min2', name: 'Other minimum', category: 'Debt', amount: 50, freq: 'month' },
+      { id: 'extra2', name: 'Other extra', category: 'Extra debt repayment', amount: 300, freq: 'year' },
+    ];
+    const b = computeBudget(s);
+    expect(b.needs).toBe(16700);
+    expect(b.wants).toBe(2400);
+    expect(b.needs + b.wants).toBe(b.expenses);
+    expect(b.afterTax).toBeCloseTo(b.needs + b.wants + b.personalContributions + b.unallocated);
+    expect(b.totalInvested).toBe(0);
+    expect(b.savingsRate).toBe(0);
+    expect(computeBudget(sanitizeState(JSON.parse(JSON.stringify(s))))).toEqual(b);
+  });
+
+  it('keeps a shortfall visible rather than subtracting it from planned savings', () => {
+    const s = state2026();
+    s.income[0] = { ...s.income[0], kind: 'taxFree', amount: 12000 };
+    s.investments.find(i => i.kind === 'tfsa')!.amount = 200;
+    s.essentials[0].amount = 1000;
+    const b = computeBudget(s);
+    expect(b.unallocated).toBe(-2400);
+    expect(b.savingsRate).toBeCloseTo(.2);
+    expect((b.needs + b.wants + b.personalContributions) / b.afterTax).toBeCloseTo(1.2);
+  });
+
   it('starts blank: no income, no tax, nothing left over', () => {
-    const b = computeBudget(createDefaultState());
+    const b = computeBudget(state2026());
     expect(b.grossIncome).toBe(0);
     expect(b.tax.totalDeducted).toBe(0);
     expect(b.unallocated).toBe(0);
@@ -40,6 +100,21 @@ describe('computeBudget', () => {
     expect(b.tax.foreignTaxPaid).toBeCloseTo(withheld);
     expect(b.tax.foreignTaxCredit).toBeGreaterThan(0);
     expect(b.tax.foreignTaxCredit).toBeLessThanOrEqual(withheld + 0.01);
+  });
+
+  it('leaves tax already withheld abroad out of the consulting set-aside', () => {
+    const plain = computeBudget(withIncome((s) => {
+      s.income[0].amount = 80000;
+      s.income.find((i) => i.currency === 'USD')!.amount = 20000;
+    }));
+    const withheld = computeBudget(withIncome((s) => {
+      s.income[0].amount = 80000;
+      const foreign = s.income.find((i) => i.currency === 'USD')!;
+      foreign.amount = 20000;
+      foreign.foreignTaxPct = 10;
+    }));
+    // The credit offsets Canadian tax, so less is left to set aside, never more.
+    expect(withheld.consultingSetAside).toBeCloseTo(plain.consultingSetAside - withheld.tax.foreignTaxCredit, 0);
   });
 
   it('taxes eligible dividends less than the same amount of interest', () => {
@@ -151,7 +226,7 @@ describe('computeBudget', () => {
 
 describe('sanitizeState', () => {
   it('round-trips an exported config', () => {
-    const s = createDefaultState();
+    const s = state2026();
     s.income[0].amount = 123456;
     s.settings.scenario = 'Downtown condo';
     const back = sanitizeState(JSON.parse(JSON.stringify({ app: 'x', ...s })));

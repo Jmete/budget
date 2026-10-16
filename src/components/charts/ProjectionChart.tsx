@@ -42,7 +42,7 @@ export function ProjectionChart({ state, b }: { state: BudgetState; b: Budget })
       subtitle={
         empty
           ? undefined
-          : `${fmt(last.balance)} after ${years} years at ${state.settings.returnRate}%. Plan starts and membership matching progress each year; salary, limits and personal savings stay fixed. Future account room is not verified.`
+          : `${fmt(last.balance)} after ${years} years at ${state.settings.returnRate}%, including employer contributions. Salary, limits and your savings stay fixed.`
       }
       legend={[
         { label: 'Projected balance', color: 'var(--s-savings)', line: true },

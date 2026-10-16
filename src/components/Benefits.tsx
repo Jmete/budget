@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { PLAN_ACCOUNTS, RETIREMENT_TYPES, type BudgetState, type Settings } from '../state/model';
 import { DEFAULT_BENEFITS, type BenefitRules, type RoomDetails } from '../state/benefits';
 import { fmt, type Budget } from '../tax/budget';
@@ -6,137 +6,229 @@ import { NumberField, SelectField, TextField } from './Fields';
 
 function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   const id = useId();
-  return <div className="field"><label className="field-label" htmlFor={id}>{label}</label><div className="input-shell"><input id={id} type="date" value={value} onChange={e => onChange(e.target.value)} /></div></div>;
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor={id}>{label}</label>
+      <div className="input-shell"><input id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)} /></div>
+    </div>
+  );
 }
-const statusOptions = [{ value: 'unknown' as const, label: 'I don’t know yet' }, { value: 'verified' as const, label: 'Verified from CRA / records' }, { value: 'estimated' as const, label: 'My estimate' }];
+
+/** A row of a plan summary: an annual amount (shown per month and per year) or a text status. */
+type SummaryRow = [label: string, value: number | string, opts?: { strong?: boolean; yearOnly?: boolean }];
+
+function Summary({ rows }: { rows: SummaryRow[] }) {
+  return (
+    <table className="plan-sum">
+      <thead>
+        <tr><th scope="col"><span className="sr-only">Item</span></th><th scope="col" className="r">/ month</th><th scope="col" className="r">/ year</th></tr>
+      </thead>
+      <tbody>
+        {rows.map(([label, v, o]) => (
+          <tr key={label} className={o?.strong ? 'strong' : ''}>
+            <th scope="row">{label}</th>
+            {typeof v === 'string' ? <td className="r" colSpan={2}>{v}</td> : <>
+              <td className="r">{o?.yearOnly ? '—' : fmt(v / 12, 2)}</td>
+              <td className="r">{fmt(v)}</td>
+            </>}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const More = ({ summary, children }: { summary: string; children: ReactNode }) => (
+  <details className="plan-more"><summary>{summary}</summary><div className="field-grid">{children}</div></details>
+);
+
+const statusOptions = [
+  { value: 'unknown' as const, label: 'I don’t know yet' },
+  { value: 'verified' as const, label: 'Verified (CRA / records)' },
+  { value: 'estimated' as const, label: 'My estimate' },
+];
+const ACCOUNTS = ['rrsp', 'tfsa', 'fhsa'] as const;
 
 export function Benefits({ state, budget: b, onSettings, onYear }: { state: BudgetState; budget: Budget; onSettings: (patch: Partial<Settings>) => void; onYear: (year: number) => void }) {
   const s = state.settings, rules = s.benefits, rooms = s.rooms;
+  const calendar = rules.mode === 'calendar';
   const setRule = (patch: Partial<BenefitRules>) => onSettings({ benefits: { ...rules, ...patch } });
   const setRoom = (patch: Partial<RoomDetails>) => onSettings({ rooms: { ...rooms, ...patch } });
-  const amount = (label: string, value: number) => <p className="derived"><span>{label}</span><strong>{fmt(value, 2)}/yr · {fmt(value / 12, 2)}/mo</strong></p>;
   type NumberRule = { [K in keyof BenefitRules]: BenefitRules[K] extends number | null ? K : never }[keyof BenefitRules];
-  const numberRule = (key: NumberRule, label: string, suffix?: string) => <NumberField hideLabel={false} label={label} value={rules[key]} min={0} suffix={suffix} placeholder={rules[key] === null ? 'No cap / not set' : '0'} onChange={v => setRule({ [key]: v ?? DEFAULT_BENEFITS[key] } as Partial<BenefitRules>)} />;
+  const numberRule = (key: NumberRule, label: string, suffix?: string) => (
+    <NumberField hideLabel={false} label={label} value={rules[key]} min={0} prefix={suffix ? undefined : '$'} suffix={suffix}
+      placeholder={DEFAULT_BENEFITS[key] !== null ? '0' : suffix === 'yr' || key === 'laterMatchRate' ? 'Not set' : 'No cap'} onChange={(v) => setRule({ [key]: v ?? DEFAULT_BENEFITS[key] } as Partial<BenefitRules>)} />
+  );
+  const savingsUsed = (s.planPct ?? 0) > 0;
+  const remainder = 100 - rules.employeeRrspAllocation - rules.employeeTfsaAllocation;
+  const roomLeft = (k: (typeof ACCOUNTS)[number]) => (k === 'rrsp' ? b.roomAvailable.rrspNewContributions : b.roomAvailable[k]);
+
   return <>
-    <div className="benefit-timing param-group">
-      <p className="hint">Enter your pension and savings plan details below, including contribution rates, employer matching, and where contributions go.</p>
-      <div className="benefit-grid">
-        <SelectField hideLabel={false} label="Show contributions for" value={rules.mode} options={[{ value: 'annualized', label: 'Typical full year (monthly budget)' }, { value: 'calendar', label: 'Actual calendar year (use dates)' }]} onChange={mode => setRule({ mode, ...(mode === 'annualized' ? { residency: 'fullYear' as const } : {}) })} />
-        <NumberField hideLabel={false} label="Tax / planning year" value={state.tax.year} maxDigits={0} onChange={v => { if (v !== null && v >= 2009 && v <= 2100) onYear(Math.round(v)); }} />
-        {rules.mode === 'calendar' && <DateField label="Employment start date" value={rules.employmentStart} onChange={employmentStart => setRule({ employmentStart })} />}
+    <div className="benefit-timing">
+      <h3 className="sub-head">Workplace plans</h3>
+      <div className="field-grid">
+        <SelectField hideLabel={false} label="Show contributions for" value={rules.mode}
+          options={[{ value: 'annualized', label: 'Typical full year' }, { value: 'calendar', label: 'Actual calendar year (dates)' }]}
+          onChange={(mode) => setRule({ mode, ...(mode === 'annualized' ? { residency: 'fullYear' as const } : {}) })} />
+        <NumberField hideLabel={false} label="Tax / planning year" value={state.tax.year} maxDigits={0} grouping={false}
+          onChange={(v) => { if (v !== null && v >= 2009 && v <= 2100) onYear(Math.round(v)); }} />
+        {calendar && <DateField label="Employment start date" value={rules.employmentStart} onChange={(employmentStart) => setRule({ employmentStart })} />}
       </div>
-      <p className="hint">{rules.mode === 'annualized'
-        ? 'Plan a typical month using a full year of salary and plan participation, divided by 12. Full-year Canadian tax residency is assumed; start dates do not reduce this budget.'
-        : 'Salary rows contain your annual pay rate. Calendar mode prorates salary and workplace plans only. Monthly results are the year’s total divided by 12.'} Changing the year requires reviewing tax rates and contribution room.</p>
-      <details><summary>Earnings and payslip details</summary>
-        <div className="benefit-grid">
-          <NumberField hideLabel={false} label="Eligible annual plan earnings" value={rules.eligibleAnnualEarnings} prefix="$" placeholder="Use salary total" min={0} onChange={eligibleAnnualEarnings => setRule({ eligibleAnnualEarnings })} />
-          <SelectField hideLabel={false} label="Canadian tax residency assumption" value={rules.residency} options={[{ value: 'fullYear', label: 'Full calendar year' }, { value: 'partYearUnknown', label: 'Part year / needs review' }]} onChange={residency => setRule({ residency })} />
-          <NumberField hideLabel={false} label="Income tax withheld from pay this year" value={rules.incomeTaxWithheld} prefix="$" placeholder="Unknown" min={0} onChange={incomeTaxWithheld => setRule({ incomeTaxWithheld })} />
-          <NumberField hideLabel={false} label="CPP + EI withheld from pay this year" value={rules.cppEiWithheld} prefix="$" placeholder="Unknown" min={0} onChange={cppEiWithheld => setRule({ cppEiWithheld })} />
-        </div>
-        <p className="hint">Use full-year actual totals (or a full-year forecast), not year-to-date amounts. Tax liability below is an estimate, not payroll withholding. Part-year resident credits need a separate review; this engine uses full-year credits.</p>
-        <p className="derived"><span>Bank pay after payroll contributions</span><strong>{b.actualCashAfterPayroll === null ? 'Enter withholding totals' : `${fmt(b.actualCashAfterPayroll, 2)}/yr`}</strong></p>
-      </details>
+      <p className="hint">{calendar
+        ? 'Salary and workplace plans are prorated from your start date; monthly figures are the year’s total ÷ 12.'
+        : 'A full year of salary and plan participation ÷ 12, assuming full-year Canadian residency.'} Changing the year means reviewing tax rates and room.</p>
+      <More summary="Earnings and payslip details">
+        <NumberField hideLabel={false} label="Eligible plan earnings / yr" value={rules.eligibleAnnualEarnings} prefix="$" placeholder="Salary total" min={0} onChange={(eligibleAnnualEarnings) => setRule({ eligibleAnnualEarnings })} />
+        <SelectField hideLabel={false} label="Canadian tax residency" value={rules.residency} options={[{ value: 'fullYear', label: 'Full calendar year' }, { value: 'partYearUnknown', label: 'Part year / needs review' }]} onChange={(residency) => setRule({ residency })} />
+        <NumberField hideLabel={false} label="Income tax withheld this year" value={rules.incomeTaxWithheld} prefix="$" placeholder="Unknown" min={0} onChange={(incomeTaxWithheld) => setRule({ incomeTaxWithheld })} />
+        <NumberField hideLabel={false} label="CPP + EI withheld this year" value={rules.cppEiWithheld} prefix="$" placeholder="Unknown" min={0} onChange={(cppEiWithheld) => setRule({ cppEiWithheld })} />
+        <p className="hint span-all">Use full-year totals or a full-year forecast, not year-to-date. Part-year residents need a separate review of credits.</p>
+        <p className="derived span-all"><span>Bank pay after payroll deductions</span><strong>{b.actualCashAfterPayroll === null ? 'Enter both withholding totals' : `${fmt(b.actualCashAfterPayroll)}/yr`}</strong></p>
+      </More>
     </div>
+
     <div className="subpanels benefits-panels">
       <fieldset className="param-group">
-        <legend>Workplace retirement plan</legend>
-        <p className="hint">A DC pension uses its own RPP deduction. Its employee + employer contributions affect next year’s RRSP room, not today’s room.</p>
-        <SelectField hideLabel={false} label="Plan type" value={s.retirementType} options={RETIREMENT_TYPES} onChange={retirementType => onSettings({ retirementType })} />
-        <NumberField hideLabel={false} label="You contribute" value={s.retirementPct} suffix="%" min={0} onChange={retirementPct => onSettings({ retirementPct })} />
-        {numberRule('automaticPct', 'Employer automatic contribution', '%')}
-        <NumberField hideLabel={false} label="Employer match (50% = 50¢ per $1)" value={s.matchRate} suffix="%" min={0} onChange={matchRate => onSettings({ matchRate })} />
-        <NumberField hideLabel={false} label="Match your first … % of earnings" value={s.matchCapPct} suffix="%" min={0} placeholder="All contributions" onChange={matchCapPct => onSettings({ matchCapPct })} />
-        {rules.mode === 'annualized' ? numberRule('membershipYear', 'Pension membership year') : <p className="hint">Plan starts: <strong>{b.plans.dates.retirement || 'Enter employment / plan start date'}</strong>. Membership years run from this date.</p>}
-        <details><summary>Plan dates, caps and later matching</summary>
-          <DateField label="Retirement plan start (optional override)" value={rules.retirementStart} onChange={retirementStart => setRule({ retirementStart })} />
+        <legend>Retirement plan</legend>
+        <div className="field-grid">
+          <SelectField hideLabel={false} label="Plan type" value={s.retirementType} options={RETIREMENT_TYPES} onChange={(retirementType) => onSettings({ retirementType })} />
+          <NumberField hideLabel={false} label="You contribute" value={s.retirementPct} suffix="% of pay" min={0} onChange={(retirementPct) => onSettings({ retirementPct })} />
+          {numberRule('automaticPct', 'Employer automatic', '% of pay')}
+          <NumberField hideLabel={false} label="Employer match" value={s.matchRate} suffix="%" placeholder="e.g. 50" min={0} onChange={(matchRate) => onSettings({ matchRate })} />
+          <NumberField hideLabel={false} label="Matched up to" value={s.matchCapPct} suffix="% of pay" min={0} placeholder="All" onChange={(matchCapPct) => onSettings({ matchCapPct })} />
+          {calendar
+            ? <p className="derived"><span>Plan starts</span><strong>{b.plans.dates.retirement || 'Enter a start date'}</strong></p>
+            : numberRule('membershipYear', 'Membership year', 'yr')}
+        </div>
+        <p className="hint">Employer match is a percentage of what you contribute: 50% means 50¢ for every $1 you put in.</p>
+        <More summary="Dates, caps and later matching">
+          <DateField label="Plan start (override)" value={rules.retirementStart} onChange={(retirementStart) => setRule({ retirementStart })} />
           {numberRule('retirementWaitMonths', 'Waiting period', 'months')}
-          {numberRule('retirementEmployeeMaxPct', 'Maximum employee election', '%')}
-          {numberRule('employerEarningsCap', 'Employer annual earnings cap')}
-          {numberRule('employeeEarningsCap', 'Your elected annual earnings cap')}
-          {numberRule('automaticMax', 'Automatic contribution annual maximum')}
-          <NumberField hideLabel={false} label="Matching contribution annual maximum" prefix="$" placeholder="No cap" value={s.matchMax} min={0} onChange={matchMax => onSettings({ matchMax })} />
-          {numberRule('matchStepYear', 'Higher match starts in membership year')}
-          {numberRule('laterMatchRate', 'Higher employer match', '%')}
-          <SelectField hideLabel={false} label="If the registered pension limit is reached" value={rules.limitAllocation} options={[{ value: 'employeeFirst', label: 'Reduce employee contributions first' }, { value: 'proportional', label: 'Reduce all contributions proportionally' }]} onChange={limitAllocation => setRule({ limitAllocation })} />
-          <p className="hint">Blank caps mean no cap; zero means zero. Limit reductions use this budgeting convention; confirm your plan administrator’s method.</p>
-          {s.retirementType === 'groupRrsp' && <label className="check"><input type="checkbox" checked={rules.groupRrspWithdrawable} onChange={e => setRule({ groupRrspWithdrawable: e.target.checked })} />Group RRSP allows ordinary cash withdrawals before leaving (employer benefit subject to EI)</label>}
-        </details>
-        {amount('You contribute', b.retirementContribution)}
-        {amount('Employer automatic', b.employerAutomatic)}
-        {amount('Employer matching', b.employerMatching)}
-        {amount('Total employer contribution', b.employerMatch)}
-        {amount('Total retirement savings', b.retirementContribution + b.employerMatch)}
-        {s.retirementType === 'dcPension' && <p className="derived"><span>Approx. pension adjustment (DC only)</span><strong>{fmt(b.retirementContribution + b.employerMatch)}/yr</strong></p>}
+          {numberRule('retirementEmployeeMaxPct', 'Max employee election', '%')}
+          {numberRule('employerEarningsCap', 'Employer earnings cap')}
+          {numberRule('employeeEarningsCap', 'Your earnings cap')}
+          {numberRule('automaticMax', 'Automatic annual max')}
+          <NumberField hideLabel={false} label="Matching annual max" prefix="$" placeholder="No cap" value={s.matchMax} min={0} onChange={(matchMax) => onSettings({ matchMax })} />
+          {numberRule('matchStepYear', 'Higher match from year', 'yr')}
+          {numberRule('laterMatchRate', 'Higher match', '%')}
+          <SelectField hideLabel={false} label="If the pension limit is reached" value={rules.limitAllocation} options={[{ value: 'employeeFirst', label: 'Cut employee first' }, { value: 'proportional', label: 'Cut all proportionally' }]} onChange={(limitAllocation) => setRule({ limitAllocation })} />
+          {s.retirementType === 'groupRrsp' && <label className="check span-all"><input type="checkbox" checked={rules.groupRrspWithdrawable} onChange={(e) => setRule({ groupRrspWithdrawable: e.target.checked })} />Group RRSP allows cash withdrawals while employed (employer share is subject to EI)</label>}
+          <p className="hint span-all">Blank caps mean no cap; zero means zero. Confirm how your administrator applies limit reductions.</p>
+        </More>
+        <Summary rows={[
+          ['You contribute', b.retirementContribution],
+          ['Employer automatic', b.employerAutomatic],
+          ['Employer matching', b.employerMatching],
+          ['Total retirement savings', b.retirementContribution + b.employerMatch, { strong: true }],
+          ...(s.retirementType === 'dcPension' ? [['Pension adjustment (approx.)', b.retirementContribution + b.employerMatch, { yearOnly: true }] as SummaryRow] : []),
+        ]} />
+        <p className="hint">{s.retirementType === 'dcPension'
+          ? 'DC contributions are an RPP deduction and use no RRSP room; they reduce next year’s RRSP room instead.'
+          : 'Group RRSP contributions use your RRSP room. The employer share is taxable pay.'}</p>
       </fieldset>
+
       <fieldset className="param-group">
         <legend>Employee savings plan</legend>
-        <p className="hint">Separate from your pension. An employer share contribution is invested compensation, never extra cash in your bank account.</p>
-        <NumberField hideLabel={false} label="You save from pay" value={s.planPct} suffix="%" min={0} onChange={planPct => onSettings({ planPct })} />
-        <SelectField hideLabel={false} label="Your contributions go to" value={rules.employeeSplit ? 'split' : s.planAccount} options={[...PLAN_ACCOUNTS.map(a => ({ ...a, label: a.value === 'nonRegistered' ? 'ESP / non-registered' : a.label })), { value: 'split', label: 'Split between ESP, RRSP and TFSA' }]} onChange={value => value === 'split' ? setRule({ employeeSplit: true }) : onSettings({ planAccount: value, benefits: { ...rules, employeeSplit: false } })} />
-        {rules.employeeSplit && <>
-          {numberRule('employeeRrspAllocation', 'Share of your savings going to RRSP', '%')}
-          {numberRule('employeeTfsaAllocation', 'Share of your savings going to TFSA', '%')}
-          <p className="derived"><span>Remainder to ESP / non-registered</span><strong>{rules.employeeRrspAllocation + rules.employeeTfsaAllocation > 100 ? 'Must total 100% or less' : `${100 - rules.employeeRrspAllocation - rules.employeeTfsaAllocation}%`}</strong></p>
+        <div className="field-grid">
+          <NumberField hideLabel={false} label="You save from pay" value={s.planPct} suffix="% of pay" min={0} onChange={(planPct) => onSettings({ planPct })} />
+          {savingsUsed && <SelectField hideLabel={false} label="Your savings go to" value={rules.employeeSplit ? 'split' : s.planAccount}
+            options={[...PLAN_ACCOUNTS.map((a) => ({ ...a, label: a.value === 'nonRegistered' ? 'ESP / non-registered' : a.label })), { value: 'split', label: 'Split: ESP, RRSP, TFSA' }]}
+            onChange={(value) => value === 'split' ? setRule({ employeeSplit: true }) : onSettings({ planAccount: value, benefits: { ...rules, employeeSplit: false } })} />}
+        </div>
+        {!savingsUsed && <p className="hint">Enter a percentage if your employer offers a savings or share purchase plan.</p>}
+        {savingsUsed && <>
+          {rules.employeeSplit && <div className="field-grid">
+            {numberRule('employeeRrspAllocation', 'Share to RRSP', '%')}
+            {numberRule('employeeTfsaAllocation', 'Share to TFSA', '%')}
+            <p className="derived span-all"><span>Remainder to ESP / non-registered</span><strong>{remainder < 0 ? 'Must total 100% or less' : `${remainder}%`}</strong></p>
+          </div>}
+          <div className="field-grid">
+            <NumberField hideLabel={false} label="Employer match" value={s.planMatchRate} suffix="%" placeholder="e.g. 50" min={0} onChange={(planMatchRate) => onSettings({ planMatchRate })} />
+            <NumberField hideLabel={false} label="Matched up to" value={s.planMatchCapPct} suffix="% of pay" min={0} placeholder="All" onChange={(planMatchCapPct) => onSettings({ planMatchCapPct })} />
+            <SelectField hideLabel={false} label="Employer match goes to" value={rules.employerAccount}
+              options={[{ value: 'unknown', label: 'Not sure yet' }, ...(rules.planKind === 'profitSharing' ? [] : PLAN_ACCOUNTS), { value: 'epsp', label: 'EPSP (taxable, T4PS)' }, { value: 'dpsp', label: 'DPSP (tax-deferred)' }]}
+              onChange={(employerAccount) => setRule({ employerAccount })} />
+            {rules.planKind !== 'profitSharing' && !['epsp', 'dpsp'].includes(rules.employerAccount) &&
+              <SelectField hideLabel={false} label="Match is taxed as" value={rules.benefitTreatment}
+                options={[{ value: 'unknown', label: 'Not sure yet' }, { value: 'nonCash', label: 'Non-cash: CPP, no EI' }, { value: 'cash', label: 'Cash: CPP + EI' }, { value: 'exempt', label: 'Not taxable (confirmed)' }]}
+                onChange={(benefitTreatment) => setRule({ benefitTreatment })} />}
+            {calendar && <p className="derived span-all"><span>Plan starts</span><strong>{b.plans.dates.savings || 'Enter a start date'}</strong></p>}
+          </div>
+          <p className="hint">Employer match is a percentage of what you contribute: 50% means 50¢ for every $1 you put in.</p>
+          <More summary="Dates and limits">
+            <SelectField hideLabel={false} label="Arrangement" value={rules.planKind} options={[{ value: 'generic', label: 'Configurable' }, { value: 'profitSharing', label: 'Separate EPSP or DPSP' }]} onChange={(planKind) => setRule({ planKind })} />
+            <DateField label="Plan start (override)" value={rules.savingsStart} onChange={(savingsStart) => setRule({ savingsStart })} />
+            {numberRule('savingsWaitMonths', 'Waiting period', 'months')}
+            {numberRule('savingsEmployeeMaxPct', 'Max employee election', '%')}
+            {numberRule('savingsEarningsCap', 'Earnings cap')}
+            <NumberField hideLabel={false} label="Match annual max" value={s.planMatchMax} prefix="$" placeholder="No cap" min={0} onChange={(planMatchMax) => onSettings({ planMatchMax })} />
+            <p className="hint span-all">With a separate EPSP/DPSP arrangement, the employer match goes there regardless of where your savings go. EPSP allocations are taxable with no withholding; DPSP contributions add to your pension adjustment.</p>
+          </More>
+          <Summary rows={[
+            ['You contribute', b.planContribution],
+            ['Employer adds', b.planMatch],
+            ['Total savings plan', b.planContribution + b.planMatch, { strong: true }],
+            ...(rules.employerAccount === 'dpsp' ? [['DPSP pension adjustment', b.planMatch, { yearOnly: true }] as SummaryRow] : []),
+            ['Income tax on match', b.planMatchIncomeTax ?? 'Unconfirmed'],
+            ['CPP + EI on match', b.planMatchPayrollTax ?? 'Unconfirmed'],
+          ]} />
+          {b.planMatchTax === null && <p className="hint">Until confirmed, the budget reserves {fmt(b.planTaxRange[1] / 12, 2)}/mo as if the match were a taxable benefit.</p>}
+          <p className="hint">The employer match is invested for you, not paid into your bank account.</p>
         </>}
-        <SelectField hideLabel={false} label="Employer match goes to" value={rules.employerAccount} options={[{ value: 'unknown', label: 'I need to check my plan' }, ...(rules.planKind === 'profitSharing' ? [] : PLAN_ACCOUNTS), { value: 'epsp', label: 'Separate EPSP (taxable, T4PS)' }, { value: 'dpsp', label: 'Separate DPSP (tax-deferred)' }]} onChange={employerAccount => setRule({ employerAccount })} />
-        {rules.planKind !== 'profitSharing' && !['epsp', 'dpsp'].includes(rules.employerAccount) && <SelectField hideLabel={false} label="Employer benefit treatment" value={rules.benefitTreatment} options={[{ value: 'unknown', label: 'I need to check payroll treatment' }, { value: 'nonCash', label: 'Taxable non-cash: CPP, no EI' }, { value: 'cash', label: 'Taxable cash benefit: CPP + EI' }, { value: 'exempt', label: 'Non-taxable (confirmed by plan)' }]} onChange={benefitTreatment => setRule({ benefitTreatment })} />}
-        <NumberField hideLabel={false} label="Savings match rate" value={s.planMatchRate} suffix="%" min={0} onChange={planMatchRate => onSettings({ planMatchRate })} />
-        <NumberField hideLabel={false} label="Match your first … % of savings earnings" value={s.planMatchCapPct} suffix="%" min={0} placeholder="All contributions" onChange={planMatchCapPct => onSettings({ planMatchCapPct })} />
-        {rules.mode === 'calendar' && <p className="hint">Plan starts: <strong>{b.plans.dates.savings || 'Enter employment / plan start date'}</strong></p>}
-        <details><summary>Savings plan dates and limits</summary>
-          <SelectField hideLabel={false} label="Savings plan arrangement" value={rules.planKind} options={[{ value: 'generic', label: 'Other employer / configurable' }, { value: 'profitSharing', label: 'Separate EPSP or DPSP' }]} onChange={planKind => setRule({ planKind })} />
-          <DateField label="Savings plan start (optional override)" value={rules.savingsStart} onChange={savingsStart => setRule({ savingsStart })} />
-          {numberRule('savingsWaitMonths', 'Savings waiting period', 'months')}
-          {numberRule('savingsEmployeeMaxPct', 'Maximum savings election', '%')}
-          {numberRule('savingsEarningsCap', 'Savings annual earnings cap')}
-          <NumberField hideLabel={false} label="Employer savings match annual maximum" value={s.planMatchMax} prefix="$" placeholder="No cap" min={0} onChange={planMatchMax => onSettings({ planMatchMax })} />
-          <p className="hint">Leave the annual maximum blank unless your plan specifies a cap. In a separate profit-sharing arrangement, the employer match goes to EPSP or DPSP independently of your contributions. EPSP is taxable at allocation without CPP/EI or income-tax withholding; DPSP contributes to a pension adjustment.</p>
-        </details>
-        {amount('You contribute', b.planContribution)}
-        {amount('Employer adds', b.planMatch)}
-        {amount('Total savings plan', b.planContribution + b.planMatch)}
-        {rules.employerAccount === 'dpsp' && <p className="derived"><span>Additional DPSP pension adjustment</span><strong>{fmt(b.planMatch)}/yr</strong></p>}
-        <p className="derived"><span>Income tax on employer match</span><strong>{b.planMatchIncomeTax === null ? 'Unconfirmed — check plan / room' : `${fmt(b.planMatchIncomeTax / 12, 2)}/mo`}</strong></p>
-        <p className="derived"><span>Extra CPP + EI on match</span><strong>{b.planMatchPayrollTax === null ? 'Unconfirmed' : `${fmt(b.planMatchPayrollTax / 12, 2)}/mo`}</strong></p>
-        {b.planMatchTax === null && <p className="hint">Budget reserves {fmt(b.planTaxRange[1] / 12, 2)}/mo under the stated taxable-benefit assumption. A confirmed tax-deferred account or eligible RRSP deduction may lower this. This is not withholding.</p>}
       </fieldset>
-      <fieldset className="param-group">
-        <legend>Contribution room</legend>
-        <p className="hint">Unknown is different from $0. Use room at the start of the selected tax year, before the contributions listed in this budget. RRSP uses the CRA deduction limit; prior unused contributions are entered separately.</p>
-        <p className="derived"><span>Room for planning year</span><strong>{state.tax.year}</strong></p>
-        <p className="hint">Follows your Tax / planning year above. Each year’s entries are saved separately; new years start with unknown room.</p>
-        {(['rrsp', 'tfsa', 'fhsa'] as const).map(k => <div className="room-account" key={k}>
-          <h3>{k.toUpperCase()}</h3>
-          {k === 'fhsa' && <>
-            <SelectField hideLabel={false} label="FHSA account situation" value={rooms.fhsaState} options={[{ value: 'unknown', label: 'Eligibility / opening not confirmed' }, { value: 'ineligible', label: 'Not eligible' }, { value: 'notOpened', label: 'Eligible, but not opened' }, { value: 'opened', label: 'Opened an FHSA' }]} onChange={fhsaState => setRoom({ fhsaState })} />
-            {rooms.fhsaState === 'opened' && <><DateField label="First FHSA opening date" value={rooms.fhsaOpened} onChange={fhsaOpened => setRoom({ fhsaOpened })} /><label className="check"><input type="checkbox" checked={rooms.fhsaEligibilityConfirmed} onChange={e => setRoom({ fhsaEligibilityConfirmed: e.target.checked })} />I met the opening eligibility rules below</label></>}
-            <p className="hint">At opening: Canadian resident, age 18+ and no more than 71 at year-end. In that year before opening and the prior four years, you must not have lived in a home you or your current spouse/partner owned (including overseas). Confirm all rules with your issuer.</p>
-          </>}
-          <SelectField hideLabel={false} label={`${k.toUpperCase()} room source`} value={rooms[`${k}Status`]} options={statusOptions} onChange={v => setRoom({ [`${k}Status`]: v })} />
-          {rooms[`${k}Status`] !== 'unknown' && <NumberField hideLabel={false} label={k === 'rrsp' ? 'RRSP deduction limit for the year' : `${k.toUpperCase()} room before this year’s contributions`} value={s[`${k}Room`]} prefix="$" placeholder={k === 'rrsp' ? 'Enter amount, including 0' : 'Enter amount or use history below'} min={0} onChange={v => onSettings({ [`${k}Room`]: v })} />}
-          <p className="derived"><span>Room available before planned deposits</span><strong>{(k === 'rrsp' ? b.roomAvailable.rrspNewContributions : b.roomAvailable[k]) === null ? 'Unknown' : fmt((k === 'rrsp' ? b.roomAvailable.rrspNewContributions : b.roomAvailable[k])!, 2)}</strong></p>
-          <p className="derived"><span>Deposits planned this year</span><strong>{fmt(b.roomUsed[k], 2)}</strong></p>
-        </div>)}
-        <details><summary>History and contributions elsewhere</summary>
-          <p className="hint">Add amounts missing from the annual investment rows and payroll plans only. These contributions count in this year’s cash flow, room use and deductions; do not enter them twice.</p>
-          {(['rrsp', 'tfsa', 'fhsa'] as const).map(k => <NumberField key={k} hideLabel={false} label={`${k.toUpperCase()} contributions elsewhere this year`} value={rooms[`${k}Elsewhere`]} prefix="$" min={0} onChange={v => setRoom({ [`${k}Elsewhere`]: v ?? 0 })} />)}
-          <NumberField hideLabel={false} label="RRSP prior-year contributions not yet deducted" value={rooms.rrspPriorUnused} prefix="$" min={0} onChange={v => setRoom({ rrspPriorUnused: v ?? 0 })} />
-          <p className="hint">These already occupy RRSP room. The model claims them against your deduction limit before additional contributions; they do not leave your bank account again this year. This year’s salary does not create this year’s RRSP room.</p>
-          <h3>Estimate TFSA room from history</h3>
-          <p className="hint">Select “My estimate” and leave the TFSA amount blank. List only years you were 18+ and a Canadian tax resident for at least part of the year (for example 2010-2012, 2026). Citizenship alone does not qualify. This estimates current room, not historical excess or non-resident contribution penalties.</p>
-          <TextField hideLabel={false} label="Qualifying Canadian resident years" value={rooms.tfsaQualifyingYears} placeholder="e.g. 2026" onChange={tfsaQualifyingYears => setRoom({ tfsaQualifyingYears })} />
-          <NumberField hideLabel={false} label="TFSA total contributions before this year" value={rooms.tfsaPastContributions} prefix="$" placeholder="Enter 0 if none" min={0} onChange={tfsaPastContributions => setRoom({ tfsaPastContributions })} />
-          <NumberField hideLabel={false} label="TFSA total withdrawals before this year" value={rooms.tfsaPastWithdrawals} prefix="$" placeholder="Enter 0 if none" min={0} onChange={tfsaPastWithdrawals => setRoom({ tfsaPastWithdrawals })} />
-          <h3>Estimate FHSA room from history</h3>
-          <p className="hint">Select “My estimate” and leave the FHSA amount blank. Opening generates $8,000; carryforward is capped at $8,000. No room accrues before opening. For ordinary contributions only; transfers, excess corrections and re-participation room need a verified amount.</p>
-          <NumberField hideLabel={false} label="FHSA unused room carried from last year" value={rooms.fhsaCarryforward} prefix="$" placeholder="Enter 0 if none" min={0} onChange={fhsaCarryforward => setRoom({ fhsaCarryforward })} />
-          <NumberField hideLabel={false} label="FHSA lifetime contributions + RRSP transfers before this year" value={rooms.fhsaLifetimeUsed} prefix="$" placeholder="Enter 0 if none" min={0} onChange={fhsaLifetimeUsed => setRoom({ fhsaLifetimeUsed })} />
-        </details>
-        {amount('RRSP + FHSA deductions allowed', b.rrspDeduction + b.fhsaDeduction)}
-        <p className="derived"><span>Approx. total PA for next year’s RRSP calculation</span><strong>{fmt(b.pensionAdjustment)}/yr</strong></p>
-        <p className="hint">DC pension contributions use no current RRSP room. Unknown employer allocations are not assigned to a registered account until confirmed.</p>
+
+      <fieldset className="param-group span-all">
+        <legend>Contribution room for {state.tax.year}</legend>
+        <p className="hint">Room at the start of the year, before the contributions in this budget. Unknown is not the same as $0. Each planning year’s room is saved separately.</p>
+        <div className="room-grid">
+          {ACCOUNTS.map((k) => (
+            <div className="room-account" key={k}>
+              <h3>{k.toUpperCase()}</h3>
+              {k === 'fhsa' && <>
+                <SelectField hideLabel={false} label="Account" value={rooms.fhsaState}
+                  options={[{ value: 'unknown', label: 'Not confirmed' }, { value: 'ineligible', label: 'Not eligible' }, { value: 'notOpened', label: 'Eligible, not opened' }, { value: 'opened', label: 'Opened' }]}
+                  onChange={(fhsaState) => setRoom({ fhsaState })} />
+                {rooms.fhsaState === 'opened' && <>
+                  <DateField label="First opened" value={rooms.fhsaOpened} onChange={(fhsaOpened) => setRoom({ fhsaOpened })} />
+                  <label className="check"><input type="checkbox" checked={rooms.fhsaEligibilityConfirmed} onChange={(e) => setRoom({ fhsaEligibilityConfirmed: e.target.checked })} />I met the opening eligibility rules</label>
+                  <p className="hint">At opening: Canadian resident, age 18–71, and you or your spouse/partner didn’t own and live in a home (including overseas) that year or the four before.</p>
+                </>}
+              </>}
+              <SelectField hideLabel={false} label="Room source" value={rooms[`${k}Status`]} options={statusOptions} onChange={(v) => setRoom({ [`${k}Status`]: v })} />
+              {rooms[`${k}Status`] !== 'unknown' && <NumberField hideLabel={false} label={k === 'rrsp' ? 'Deduction limit' : 'Room'} value={s[`${k}Room`]} prefix="$"
+                placeholder="Amount or history" min={0} onChange={(v) => onSettings({ [`${k}Room`]: v })} />}
+              <dl className="room-stats">
+                <div><dt>Available</dt><dd>{roomLeft(k) === null ? 'Unknown' : fmt(roomLeft(k)!)}</dd></div>
+                <div><dt>Planned</dt><dd className={roomLeft(k) !== null && b.roomUsed[k] > roomLeft(k)! ? 'is-neg' : ''}>{fmt(b.roomUsed[k])}</dd></div>
+              </dl>
+            </div>
+          ))}
+        </div>
+        <More summary="History and contributions elsewhere">
+          <p className="hint span-all">Only contributions not already in the rows above or your payroll plans. They count toward cash flow, room and deductions.</p>
+          {ACCOUNTS.map((k) => <NumberField key={k} hideLabel={false} label={`${k.toUpperCase()} elsewhere this year`} value={rooms[`${k}Elsewhere`]} prefix="$" min={0} onChange={(v) => setRoom({ [`${k}Elsewhere`]: v ?? 0 })} />)}
+          <NumberField hideLabel={false} label="RRSP undeducted from past years" value={rooms.rrspPriorUnused} prefix="$" min={0} onChange={(v) => setRoom({ rrspPriorUnused: v ?? 0 })} />
+          <p className="hint span-all">Past undeducted RRSP contributions already use room and are claimed first. They don’t leave your bank account again.</p>
+          <h4 className="span-all">Estimate RRSP room</h4>
+          <p className="hint span-all">Choose “My estimate” and leave the RRSP limit blank. Your room is unused room carried forward, plus 18% of last year’s earned income (up to {fmt(state.tax.rrspDollarLimit)}), less last year’s pension adjustment. Unused room is on your last Notice of Assessment or CRA My Account; enter 0 if you never had any.</p>
+          <NumberField hideLabel={false} label="Unused room carried forward" value={rooms.rrspCarryforward} prefix="$" placeholder="0 if none" min={0} onChange={(rrspCarryforward) => setRoom({ rrspCarryforward })} />
+          <NumberField hideLabel={false} label={`${state.tax.year - 1} Canadian earned income`} value={rooms.rrspPriorEarnedIncome} prefix="$" placeholder="0 if none" min={0} onChange={(rrspPriorEarnedIncome) => setRoom({ rrspPriorEarnedIncome })} />
+          <NumberField hideLabel={false} label={`${state.tax.year - 1} pension adjustment`} value={rooms.rrspPriorPensionAdjustment} prefix="$" placeholder="0 if none" min={0} onChange={(rrspPriorPensionAdjustment) => setRoom({ rrspPriorPensionAdjustment })} />
+          <h4 className="span-all">Estimate TFSA room</h4>
+          <p className="hint span-all">Choose “My estimate” and leave the TFSA room blank. List years you were 18+ and resident in Canada for part of the year, e.g. 2010-2012, 2026.</p>
+          <TextField hideLabel={false} label="Qualifying years" value={rooms.tfsaQualifyingYears} placeholder="e.g. 2026" onChange={(tfsaQualifyingYears) => setRoom({ tfsaQualifyingYears })} />
+          <NumberField hideLabel={false} label="Past contributions" value={rooms.tfsaPastContributions} prefix="$" placeholder="0 if none" min={0} onChange={(tfsaPastContributions) => setRoom({ tfsaPastContributions })} />
+          <NumberField hideLabel={false} label="Past withdrawals" value={rooms.tfsaPastWithdrawals} prefix="$" placeholder="0 if none" min={0} onChange={(tfsaPastWithdrawals) => setRoom({ tfsaPastWithdrawals })} />
+          <h4 className="span-all">Estimate FHSA room</h4>
+          <p className="hint span-all">Choose “My estimate” and leave the FHSA room blank. $8,000 a year from opening, up to $8,000 carried forward. Transfers and corrections need a verified amount.</p>
+          <NumberField hideLabel={false} label="Carried from last year" value={rooms.fhsaCarryforward} prefix="$" placeholder="0 if none" min={0} onChange={(fhsaCarryforward) => setRoom({ fhsaCarryforward })} />
+          <NumberField hideLabel={false} label="Lifetime used before this year" value={rooms.fhsaLifetimeUsed} prefix="$" placeholder="0 if none" min={0} onChange={(fhsaLifetimeUsed) => setRoom({ fhsaLifetimeUsed })} />
+        </More>
+        <Summary rows={[
+          ['RRSP + FHSA deductions allowed', b.rrspDeduction + b.fhsaDeduction],
+          ...(b.potentialDeductionSavings - b.deductionSavings > 0.5 ? [['Extra tax saving once unknown room is confirmed', b.potentialDeductionSavings - b.deductionSavings, { yearOnly: true }] as SummaryRow] : []),
+          ['Pension adjustment (affects next year’s RRSP room)', b.pensionAdjustment, { yearOnly: true }],
+        ]} />
       </fieldset>
     </div>
   </>;

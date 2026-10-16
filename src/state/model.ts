@@ -1,5 +1,5 @@
 import { DEFAULT_BENEFITS, DEFAULT_ROOMS, sanitizeDetails, type BenefitRules, type RoomDetails } from './benefits';
-import { DEFAULT_TAX, type TaxParams } from '../tax/params';
+import { DEFAULT_TAX, defaultTaxFor, type TaxParams } from '../tax/params';
 import { roomsForPlanningYear, sanitizeRoomYears, type RoomYearRecord } from './roomYears';
 
 export type Freq = 'week' | 'biweekly' | 'semimonthly' | 'month' | 'quarter' | 'year';
@@ -105,6 +105,7 @@ export const EXPENSE_CATEGORIES = [
   'Personal',
   'Family',
   'Debt',
+  'Extra debt repayment',
   'Travel',
   'Giving',
   'Other',
@@ -257,7 +258,7 @@ const exp = (name: string, category: ExpenseCategory, freq: Freq = 'month'): Exp
 
 // Rough starting rates; users should update them. SAR and HKD are pegged to the USD
 // (3.75 and ~7.8 per USD), so they follow the USD rate.
-export const DEFAULT_FX: Settings['fx'] = { USD: 1.38, EUR: 1.6, GBP: 1.85, SAR: 0.368, HKD: 0.177 };
+const DEFAULT_FX: Settings['fx'] = { USD: 1.38, EUR: 1.6, GBP: 1.85, SAR: 0.368, HKD: 0.177 };
 
 export function createDefaultState(): BudgetState {
   return {
@@ -316,7 +317,7 @@ export function createDefaultState(): BudgetState {
       exp('Life insurance', 'Insurance'),
       exp('Prescriptions & dental', 'Health'),
       exp('Pet food & vet', 'Pets'),
-      exp('Debt repayment', 'Debt'),
+      exp('Minimum debt payments', 'Debt'),
     ],
     lifestyle: [
       exp('Restaurants', 'Food'),
@@ -338,7 +339,7 @@ export function createDefaultState(): BudgetState {
 
 // ---------------------------------------------------------------- persistence
 
-export const STORAGE_KEY = 'tb.state.v1';
+const STORAGE_KEY = 'tb.state.v1';
 
 const num = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
@@ -414,15 +415,17 @@ export function sanitizeState(raw: unknown): BudgetState {
     freq: oneOf(x.freq, FREQ_VALUES, 'month'),
   });
 
-  const tax = { ...structuredClone(DEFAULT_TAX) } as TaxParams;
   const rt = (r.tax ?? {}) as Record<string, unknown>;
-  for (const key of Object.keys(DEFAULT_TAX) as (keyof TaxParams)[]) {
+  // Missing fields fall back to the built-in figures for the config's own year.
+  const defaults = defaultTaxFor(num(rt.year) ?? DEFAULT_TAX.year);
+  const tax = structuredClone(defaults);
+  for (const key of Object.keys(defaults) as (keyof TaxParams)[]) {
     const v = rt[key];
     if (key === 'federalBrackets' || key === 'ontarioBrackets') {
-      if (Array.isArray(v) && v.length === DEFAULT_TAX[key].length) {
+      if (Array.isArray(v) && v.length === defaults[key].length) {
         tax[key] = v.map((b, i) => ({
-          upTo: i === v.length - 1 ? null : (num((b as Record<string, unknown>)?.upTo) ?? DEFAULT_TAX[key][i].upTo),
-          rate: num((b as Record<string, unknown>)?.rate) ?? DEFAULT_TAX[key][i].rate,
+          upTo: i === v.length - 1 ? null : (num((b as Record<string, unknown>)?.upTo) ?? defaults[key][i].upTo),
+          rate: num((b as Record<string, unknown>)?.rate) ?? defaults[key][i].rate,
         }));
       }
     } else if (num(v) !== null) {

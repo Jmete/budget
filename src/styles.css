@@ -1630,14 +1630,16 @@ main {
 }
 .split-track {
   display: flex;
-  gap: 2px;
   height: 24px;
+  overflow: hidden;
+  border-radius: 4px;
 }
 .split-seg {
   display: flex;
+  flex-basis: 0;
   align-items: center;
-  padding-left: 7px;
-  min-width: 2px;
+  justify-content: center;
+  min-width: 0;
   overflow: hidden;
   transition: opacity 0.15s;
 }
@@ -1650,10 +1652,45 @@ main {
   color: #fff;
 }
 .split-verdict {
-  margin: 6px 0 0;
+  margin: 12px 0 0;
   font-size: 13px;
   color: var(--ink-2);
 }
+.split-unallocated {
+  background: repeating-linear-gradient(135deg, transparent 0 4px, var(--line-strong) 4px 6px), var(--panel-2);
+}
+.split-unallocated .split-pct { color: var(--ink-2); }
+.split-remainder {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.split-summary {
+  display: grid;
+  gap: 9px;
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.split-summary > div { display: flex; justify-content: space-between; gap: 16px; }
+.split-summary dt { color: var(--ink-2); }
+.split-summary dd { margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.split-summary .split-total {
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+}
+.split-total dt { color: var(--ink); }
+.split-leftover { margin-top: 7px; }
+.split-note, .split-explainer { font-size: 12px; line-height: 1.6; color: var(--ink-2); }
+.split-note { margin: 10px 0; }
+.split-explainer summary { cursor: pointer; }
+.split-explainer p { margin: 8px 0; }
+.split-explainer a { color: var(--ink-2); }
 
 /* ---------------------------------------------------------------- footer */
 
@@ -1742,7 +1779,7 @@ main {
   .rows-simple .row {
     grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(var(--tools-w), 1fr);
     gap: 6px 8px;
-    padding: 14px 0;
+    padding: 10px 0;
   }
   .rows-income .row {
     grid-template-areas:
@@ -1769,9 +1806,15 @@ main {
   .c-yr {
     align-self: start;
   }
+  /* Monthly and yearly totals stack within the height of the field beside them. */
   .c-mo,
   .c-yr {
     text-align: right;
+    line-height: 1.15;
+  }
+  .c-mo .calc,
+  .c-yr .calc {
+    font-size: 13px;
   }
   .c-pct .input-shell::before {
     content: 'Foreign tax';
@@ -1790,9 +1833,27 @@ main {
   .row .c-tools { grid-area: x; justify-self: end; }
   .c-mo .calc::after { content: ' /mo'; color: var(--ink-3); font-weight: 400; }
   .c-yr .calc::after { content: ' /yr'; color: var(--ink-3); font-weight: 400; }
-  .rail {
-    columns: 1;
+  /* One column: each chart follows the inputs it reflects instead of all charts
+     coming after every input section. */
+  .layout {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
   }
+  .inputs,
+  .rail {
+    display: contents;
+  }
+  #income { order: 1; }
+  #income-mix { order: 2; }
+  #tax { order: 3; }
+  #rates { order: 4; }
+  #savings { order: 5; }
+  #growth { order: 6; }
+  #essentials { order: 7; }
+  #lifestyle { order: 8; }
+  #expense-mix { order: 9; }
+  #split { order: 10; }
 }
 
 @media (max-width: 640px) {
@@ -1880,9 +1941,7 @@ main {
   .toast {
     bottom: calc(76px + env(safe-area-inset-bottom));
   }
-  .section,
-  .readout,
-  .rail {
+  .panel {
     scroll-margin-top: 12px;
   }
   .subpanels {
@@ -2046,7 +2105,6 @@ main {
 
 @media (forced-colors: active) {
   .alloc-seg,
-  .hbar-seg,
   .split-seg {
     border: 1px solid CanvasText;
   }
@@ -2066,15 +2124,128 @@ main {
   }
 }
 
-/* Benefit inputs keep the existing field and panel styles. */
-.benefit-timing { margin-top: 1.5rem; }
-.benefit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
-.benefits-panels { grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); }
-.benefits-panels .derived { flex-wrap: wrap; gap: .35rem; }
-.benefits-panels .derived strong { font-size: .8rem; }
-.benefits-panels details, .benefit-timing details { margin: 1rem 0; }
-.benefits-panels summary, .benefit-timing summary { cursor: pointer; color: var(--ink-2); margin-bottom: 1rem; }
-.benefits-panels details .field { margin-bottom: .8rem; }
-.room-account { border-top: 1px solid var(--line); padding-top: .8rem; margin-top: 1rem; }
-.room-account h3 { margin: 0 0 .8rem; font-size: .9rem; }
-.benefits-panels .check { align-items: flex-start; white-space: normal; }
+/* Workplace plans and contribution room */
+.benefit-timing {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+}
+.sub-head {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 750;
+  font-stretch: 112%;
+}
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
+  gap: 10px 12px;
+  align-items: end;
+}
+.span-all {
+  grid-column: 1 / -1;
+}
+.field-grid .hint,
+.field-grid .derived {
+  margin: 0;
+}
+.field-grid h4 {
+  margin: 6px 0 -2px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.plan-more summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.plan-more summary:hover {
+  color: var(--ink);
+}
+.plan-more[open] summary {
+  margin-bottom: 12px;
+}
+.benefits-panels {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  align-items: start;
+}
+.benefits-panels .check {
+  align-items: flex-start;
+  white-space: normal;
+}
+.plan-sum {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.plan-sum th,
+.plan-sum td {
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  font-weight: 400;
+}
+.plan-sum thead th {
+  border-top: 0;
+  white-space: nowrap;
+  padding-bottom: 2px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.plan-sum tbody th {
+  color: var(--ink-2);
+  padding-right: 12px;
+}
+.plan-sum td {
+  padding-left: 12px;
+  white-space: nowrap;
+}
+.plan-sum .r {
+  text-align: right;
+}
+.plan-sum tr.strong th,
+.plan-sum tr.strong td {
+  color: var(--ink);
+  font-weight: 700;
+}
+.room-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px 20px;
+}
+.room-account {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding-top: 10px;
+  border-top: 2px solid var(--line-strong);
+}
+.room-account h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.room-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 12px;
+}
+.room-stats dt {
+  color: var(--ink-3);
+}
+.room-stats dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.room-stats .is-neg {
+  color: var(--neg);
+}

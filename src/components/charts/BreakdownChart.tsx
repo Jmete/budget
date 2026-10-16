@@ -55,7 +55,13 @@ export function BreakdownChart({
   emptyText: string;
 }) {
   const storageKey = `tb.view.${id}`;
-  const [view, setView] = useState<View>(() => (localStorage.getItem(storageKey) === 'bar' ? 'bar' : 'pie'));
+  const [view, setView] = useState<View>(() => {
+    try {
+      return localStorage.getItem(storageKey) === 'bar' ? 'bar' : 'pie';
+    } catch {
+      return 'pie';
+    }
+  });
   const [path, setPath] = useState<string[]>([]);
   const [hover, setHover] = useState<string | null>(null);
 

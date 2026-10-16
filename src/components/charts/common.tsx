@@ -30,6 +30,7 @@ export function ChartCard({
   legend,
   table,
   footnote,
+  footer,
   actions,
   children,
 }: {
@@ -39,13 +40,15 @@ export function ChartCard({
   legend?: LegendItem[];
   table?: { head: string[]; rows: (string | number)[][] };
   footnote?: ReactNode;
+  /** Supporting content kept visible in both chart and table views. */
+  footer?: ReactNode;
   /** Controls shown at the right of the title, e.g. a view toggle. */
   actions?: ReactNode;
   children: ReactNode;
 }) {
   const [showTable, setShowTable] = useState(false);
   return (
-    <section className="panel chart-card" aria-labelledby={`${id}-title`}>
+    <section className="panel chart-card" id={id} aria-labelledby={`${id}-title`}>
       <header className={`panel-head ${actions ? 'has-actions' : ''}`}>
         <div className="panel-head-text">
           <h2 id={`${id}-title`}>{title}</h2>
@@ -97,6 +100,7 @@ export function ChartCard({
           {showTable ? 'Show chart' : 'Show as table'}
         </button>
       )}
+      {footer}
     </section>
   );
 }

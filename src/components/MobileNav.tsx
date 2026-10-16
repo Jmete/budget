@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { fmt } from '../tax/budget';
 
-// Several page sections can map to one tab (Spending covers essentials and lifestyle).
+// On phones each chart sits right after the inputs it reflects, so a tab covers
+// its input sections and their charts (see the mobile `order` rules in styles.css).
 const TABS = [
-  { key: 'income', label: 'Income', ids: ['income'] },
-  { key: 'savings', label: 'Saving', ids: ['savings'] },
-  { key: 'spending', label: 'Spending', ids: ['essentials', 'lifestyle'] },
-  { key: 'analysis', label: 'Charts', ids: ['analysis', 'assumptions'] },
+  { key: 'income', label: 'Income', ids: ['income', 'income-mix', 'tax', 'rates'] },
+  { key: 'savings', label: 'Saving', ids: ['savings', 'growth'] },
+  { key: 'spending', label: 'Spending', ids: ['essentials', 'lifestyle', 'expense-mix', 'split'] },
+  { key: 'settings', label: 'Settings', ids: ['assumptions'] },
 ] as const;
 
 type TabKey = 'summary' | (typeof TABS)[number]['key'];

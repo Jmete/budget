@@ -1,10 +1,11 @@
+import { state2026 } from '../test/state2026';
 import { describe, expect, it } from 'vitest';
-import { createDefaultState, sanitizeState, updateTaxParams } from './model';
+import { sanitizeState, updateTaxParams } from './model';
 import { computeBudget } from '../tax/budget';
-import { DEFAULT_TAX } from '../tax/params';
+import { TAX_2026 } from '../tax/params';
 
 function with2026Room() {
-  const state = createDefaultState();
+  const state = state2026();
   state.income[0].amount = 125000;
   state.settings.rrspRoom = 15000;
   state.settings.tfsaRoom = 7000;
@@ -82,8 +83,8 @@ describe('contribution room follows the planning year', () => {
     const original = with2026Room();
     expect(updateTaxParams(original, { fhsaAnnualLimit: 9000 }).settings).toBe(original.settings);
     const next = updateTaxParams(original, { year: 2027 });
-    const reset = updateTaxParams(next, structuredClone(DEFAULT_TAX));
-    expect(reset.tax).toEqual(DEFAULT_TAX);
+    const reset = updateTaxParams(next, structuredClone(TAX_2026));
+    expect(reset.tax).toEqual(TAX_2026);
     expect(reset.settings.rooms).toEqual(original.settings.rooms);
   });
 

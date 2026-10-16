@@ -11,7 +11,7 @@ interface Segment {
   hatch?: boolean;
 }
 
-export function allocationSegments(b: Budget): Segment[] {
+function allocationSegments(b: Budget): Segment[] {
   return [
     { key: 'tax', label: 'Income tax', value: b.tax.incomeTax + b.tax.foreignTaxPaid, color: 'var(--s-tax)' },
     { key: 'payroll', label: 'CPP & EI', value: b.tax.cppTotal + b.tax.ei, color: 'var(--s-payroll)' },
@@ -39,8 +39,8 @@ export function Readout({ b }: { b: Budget }) {
         <p className={`hero-figure ${short ? 'is-neg' : ''}`} aria-live="polite">
           {fmt(Math.abs(monthlyLeft))}
         </p>
-        {b.taxProvisional && <p className="hint">Provisional budget — see unconfirmed plan, room or residency assumptions below.</p>}
-        {b.calendarMode && <p className="hint">Entire calendar-year totals ÷ 12, including months before employment. This is not a typical working month.</p>}
+        {b.taxProvisional && <p className="hint">Provisional: some plan, room or residency details are unconfirmed. See notes below.</p>}
+        {b.calendarMode && <p className="hint">Calendar-year totals ÷ 12, including months before your start date.</p>}
         <p className="readout-sub">
           {hasIncome
             ? short
@@ -56,7 +56,7 @@ export function Readout({ b }: { b: Budget }) {
           label="Tax, CPP & EI"
           value={fmt(b.tax.totalDeducted / 12)}
           unit="/mo"
-          note={`${pct(b.effectiveRate)} of taxable income`}
+          note={`${pct(b.effectiveRate)} effective rate on gross income`}
         />
         <Tile
           label="Marginal rate"
@@ -64,19 +64,17 @@ export function Readout({ b }: { b: Budget }) {
           note={b.consulting > 0 && b.salary > 0 ? `${pct(b.marginalConsulting)} on next consulting dollar` : 'Tax on your next dollar'}
         />
         <Tile
-          label="Saving rate"
+          label="Planned saving rate"
           value={pct(b.savingsRate, 0)}
-          note={
-            b.employerMatch + b.planMatch > 0
-              ? `plus ${fmt(b.employerMatch + b.planMatch)}/yr employer contributions`
-              : 'Savings + leftover ÷ take-home'
-          }
+          note="Your contributions ÷ take-home pay"
         />
         <Tile
           label="RRSP & FHSA tax saving"
           value={fmt(b.deductionSavings)}
           unit="/yr"
-          note="Tax saved by your deductions"
+          note={b.potentialDeductionSavings - b.deductionSavings > 0.5
+            ? `Up to ${fmt(b.potentialDeductionSavings)}/yr once your room is confirmed`
+            : 'Tax saved by your deductions'}
         />
         {b.consulting > 0 && (
           <Tile

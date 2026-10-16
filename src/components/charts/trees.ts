@@ -26,7 +26,7 @@ function groupNode(key: string, label: string, color: string, items: ExpenseItem
   }
   const children = [...byCat.entries()].map(([cat, kids]) => ({
     key: `${key}:${cat}`,
-    label: cat,
+    label: cat === 'Extra debt repayment' ? 'Debt overpayments' : cat,
     value: sum(kids),
     children: kids,
   }));

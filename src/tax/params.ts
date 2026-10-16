@@ -1,4 +1,4 @@
-// 2026 federal + Ontario assumptions. Every value is editable in the app's
+// Federal + Ontario assumptions by tax year. Every value is editable in the app's
 // "Tax assumptions" panel and travels with the exported config.
 
 export interface Bracket {
@@ -51,7 +51,7 @@ export interface TaxParams {
   tfsaAnnualLimit: number;
 }
 
-export const DEFAULT_TAX: TaxParams = {
+export const TAX_2026: TaxParams = {
   year: 2026,
   cppBasicExemption: 3500,
   cppYmpe: 74600,
@@ -100,3 +100,35 @@ export const DEFAULT_TAX: TaxParams = {
   fhsaLifetimeLimit: 40000,
   tfsaAnnualLimit: 7000,
 };
+
+/**
+ * 2027 figures published so far: EI (CEIC, September 2026) and the RRSP dollar limit.
+ * CRA publishes the rest of the 2027 indexation in November; until then these stay at 2026 values.
+ */
+export const TAX_2027: TaxParams = {
+  ...TAX_2026,
+  year: 2027,
+  eiMaxInsurable: 70800,
+  eiRate: 0.0164,
+  rrspDollarLimit: 35390,
+};
+
+/** Figures in TAX_2027 still carried over from 2026, shown as a planning note. */
+export const PENDING_2027 = 'Federal and Ontario brackets and credits, CPP limits, the DC pension (money purchase) limit and the TFSA limit';
+
+const BUILT_IN: Record<number, TaxParams> = { 2026: TAX_2026, 2027: TAX_2027 };
+
+export const DEFAULT_TAX = TAX_2027;
+
+/** The built-in assumptions for a year, or the current default for years without them. */
+export const defaultTaxFor = (year: number): TaxParams => BUILT_IN[year] ?? DEFAULT_TAX;
+export const hasBuiltInTax = (year: number) => year in BUILT_IN;
+
+/**
+ * Parameters after switching planning year. Unedited built-in figures follow the new
+ * year; edited or custom figures are kept and only the year changes.
+ */
+export function paramsForYear(current: TaxParams, year: number): TaxParams {
+  const unedited = hasBuiltInTax(current.year) && JSON.stringify(current) === JSON.stringify(BUILT_IN[current.year]);
+  return unedited && hasBuiltInTax(year) ? structuredClone(BUILT_IN[year]) : { ...current, year };
+}
