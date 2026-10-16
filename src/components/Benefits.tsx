@@ -90,6 +90,7 @@ export function Benefits({ state, budget: b, onSettings, onYear }: { state: Budg
     <div className="subpanels benefits-panels">
       <fieldset className="param-group">
         <legend>Retirement plan</legend>
+        <div className="plan-body"><div className="plan-inputs">
         <div className="field-grid">
           <SelectField hideLabel={false} label="Plan type" value={s.retirementType} options={RETIREMENT_TYPES} onChange={(retirementType) => onSettings({ retirementType })} />
           <NumberField hideLabel={false} label="You contribute" value={s.retirementPct} suffix="% of pay" min={0} onChange={(retirementPct) => onSettings({ retirementPct })} />
@@ -115,6 +116,7 @@ export function Benefits({ state, budget: b, onSettings, onYear }: { state: Budg
           {s.retirementType === 'groupRrsp' && <label className="check span-all"><input type="checkbox" checked={rules.groupRrspWithdrawable} onChange={(e) => setRule({ groupRrspWithdrawable: e.target.checked })} />Group RRSP allows cash withdrawals while employed (employer share is subject to EI)</label>}
           <p className="hint span-all">Blank caps mean no cap; zero means zero. Confirm how your administrator applies limit reductions.</p>
         </More>
+        </div><div className="plan-results">
         <Summary rows={[
           ['You contribute', b.retirementContribution],
           ['Employer automatic', b.employerAutomatic],
@@ -125,24 +127,23 @@ export function Benefits({ state, budget: b, onSettings, onYear }: { state: Budg
         <p className="hint">{s.retirementType === 'dcPension'
           ? 'DC contributions are an RPP deduction and use no RRSP room; they reduce next year’s RRSP room instead.'
           : 'Group RRSP contributions use your RRSP room. The employer share is taxable pay.'}</p>
+        </div></div>
       </fieldset>
 
       <fieldset className="param-group">
         <legend>Employee savings plan</legend>
+        <div className="plan-body"><div className="plan-inputs">
         <div className="field-grid">
           <NumberField hideLabel={false} label="You save from pay" value={s.planPct} suffix="% of pay" min={0} onChange={(planPct) => onSettings({ planPct })} />
           {savingsUsed && <SelectField hideLabel={false} label="Your savings go to" value={rules.employeeSplit ? 'split' : s.planAccount}
             options={[...PLAN_ACCOUNTS.map((a) => ({ ...a, label: a.value === 'nonRegistered' ? 'ESP / non-registered' : a.label })), { value: 'split', label: 'Split: ESP, RRSP, TFSA' }]}
             onChange={(value) => value === 'split' ? setRule({ employeeSplit: true }) : onSettings({ planAccount: value, benefits: { ...rules, employeeSplit: false } })} />}
-        </div>
-        {!savingsUsed && <p className="hint">Enter a percentage if your employer offers a savings or share purchase plan.</p>}
-        {savingsUsed && <>
-          {rules.employeeSplit && <div className="field-grid">
-            {numberRule('employeeRrspAllocation', 'Share to RRSP', '%')}
-            {numberRule('employeeTfsaAllocation', 'Share to TFSA', '%')}
-            <p className="derived span-all"><span>Remainder to ESP / non-registered</span><strong>{remainder < 0 ? 'Must total 100% or less' : `${remainder}%`}</strong></p>
-          </div>}
-          <div className="field-grid">
+          {savingsUsed && <>
+            {rules.employeeSplit && <>
+              {numberRule('employeeRrspAllocation', 'Share to RRSP', '%')}
+              {numberRule('employeeTfsaAllocation', 'Share to TFSA', '%')}
+              <p className="derived"><span>Remainder to ESP</span><strong>{remainder < 0 ? 'Over 100%' : `${remainder}%`}</strong></p>
+            </>}
             <NumberField hideLabel={false} label="Employer match" value={s.planMatchRate} suffix="%" placeholder="e.g. 50" min={0} onChange={(planMatchRate) => onSettings({ planMatchRate })} />
             <NumberField hideLabel={false} label="Matched up to" value={s.planMatchCapPct} suffix="% of pay" min={0} placeholder="All" onChange={(planMatchCapPct) => onSettings({ planMatchCapPct })} />
             <SelectField hideLabel={false} label="Employer match goes to" value={rules.employerAccount}
@@ -152,8 +153,11 @@ export function Benefits({ state, budget: b, onSettings, onYear }: { state: Budg
               <SelectField hideLabel={false} label="Match is taxed as" value={rules.benefitTreatment}
                 options={[{ value: 'unknown', label: 'Not sure yet' }, { value: 'nonCash', label: 'Non-cash: CPP, no EI' }, { value: 'cash', label: 'Cash: CPP + EI' }, { value: 'exempt', label: 'Not taxable (confirmed)' }]}
                 onChange={(benefitTreatment) => setRule({ benefitTreatment })} />}
-            {calendar && <p className="derived span-all"><span>Plan starts</span><strong>{b.plans.dates.savings || 'Enter a start date'}</strong></p>}
-          </div>
+            {calendar && <p className="derived"><span>Plan starts</span><strong>{b.plans.dates.savings || 'Enter a start date'}</strong></p>}
+          </>}
+        </div>
+        {!savingsUsed && <p className="hint">Enter a percentage if your employer offers a savings or share purchase plan.</p>}
+        {savingsUsed && <>
           <p className="hint">Employer match is a percentage of what you contribute: 50% means 50¢ for every $1 you put in.</p>
           <More summary="Dates and limits">
             <SelectField hideLabel={false} label="Arrangement" value={rules.planKind} options={[{ value: 'generic', label: 'Configurable' }, { value: 'profitSharing', label: 'Separate EPSP or DPSP' }]} onChange={(planKind) => setRule({ planKind })} />
@@ -164,6 +168,9 @@ export function Benefits({ state, budget: b, onSettings, onYear }: { state: Budg
             <NumberField hideLabel={false} label="Match annual max" value={s.planMatchMax} prefix="$" placeholder="No cap" min={0} onChange={(planMatchMax) => onSettings({ planMatchMax })} />
             <p className="hint span-all">With a separate EPSP/DPSP arrangement, the employer match goes there regardless of where your savings go. EPSP allocations are taxable with no withholding; DPSP contributions add to your pension adjustment.</p>
           </More>
+        </>}
+        </div>
+        {savingsUsed && <div className="plan-results">
           <Summary rows={[
             ['You contribute', b.planContribution],
             ['Employer adds', b.planMatch],
@@ -174,7 +181,8 @@ export function Benefits({ state, budget: b, onSettings, onYear }: { state: Budg
           ]} />
           {b.planMatchTax === null && <p className="hint">Until confirmed, the budget reserves {fmt(b.planTaxRange[1] / 12, 2)}/mo as if the match were a taxable benefit.</p>}
           <p className="hint">The employer match is invested for you, not paid into your bank account.</p>
-        </>}
+        </div>}
+        </div>
       </fieldset>
 
       <fieldset className="param-group span-all">

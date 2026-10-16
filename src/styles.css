@@ -2169,9 +2169,23 @@ main {
 .plan-more[open] summary {
   margin-bottom: 12px;
 }
+/* Each plan spans the full width: inputs flow across, results sit beside them. */
 .benefits-panels {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+.plan-body,
+.plan-inputs,
+.plan-results {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+@media (min-width: 760px) {
+  .plan-body {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 34%);
+    gap: 24px;
+  }
 }
 .benefits-panels .check {
   align-items: flex-start;

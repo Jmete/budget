@@ -26,6 +26,6 @@ it('renders every optional branch and shows the year without a thousands separat
   expect(html).toContain('value="2027"');
   expect(html).toContain('Pension adjustment (approx.)');
   expect(html).toContain('DPSP pension adjustment');
-  expect(html).toContain('Remainder to ESP / non-registered');
+  expect(html).toContain('Remainder to ESP');
   expect(html).toContain('I met the opening eligibility rules');
 });
