@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { BudgetState } from '../../state/model';
-import { fmt, projectSavings, type Budget } from '../../tax/budget';
+import { fmt, matchStepYear, projectSavings, type Budget } from '../../tax/budget';
 import { ChartCard, compact, niceScale, useWidth } from './common';
 
 const H = 230;
@@ -12,6 +12,7 @@ export function ProjectionChart({ state, b }: { state: BudgetState; b: Budget })
   const data = useMemo(() => projectSavings(state, b), [state, b]);
   const last = data[data.length - 1];
   const years = data.length - 1;
+  const stepYear = matchStepYear(state, b);
 
   const yScale = niceScale(last.balance, 4);
   const iw = width - M.l - M.r;
@@ -42,7 +43,7 @@ export function ProjectionChart({ state, b }: { state: BudgetState; b: Budget })
       subtitle={
         empty
           ? undefined
-          : `${fmt(last.balance)} after ${years} years at ${state.settings.returnRate}%, including employer contributions. Salary, limits and your savings stay fixed.`
+          : `${fmt(last.balance)} after ${years} years at ${state.settings.returnRate}%, including employer contributions.${stepYear ? ` Employer match rises to ${state.settings.benefits.laterMatchRate}% from year ${stepYear}.` : ''} Salary, limits and your savings ${stepYear ? 'otherwise ' : ''}stay fixed.`
       }
       legend={[
         { label: 'Projected balance', color: 'var(--s-savings)', line: true },

@@ -7,7 +7,7 @@ import {
   type IncomeItem,
   type IncomeKind,
 } from '../state/model';
-import { calculatePlans, positive, yearFraction, validDate } from './plans';
+import { addMonths, calculatePlans, positive, yearFraction, validDate } from './plans';
 import { contributionRooms } from './rooms';
 import { calculateTax, EMPTY_INPUT, marginalBracketRate, type TaxInput, type TaxResult } from './engine';
 import { hasBuiltInTax, PENDING_2027 } from './params';
@@ -389,6 +389,19 @@ export function projectSavings(state: BudgetState, b: Budget): ProjectionPoint[]
     out.push({ year: y, contributed, growth: balance - contributed, balance });
   }
   return out;
+}
+
+/** Projection year in which the retirement plan's higher match starts, if it falls after year 1 and within the horizon. */
+export function matchStepYear(state: BudgetState, b: Budget): number | null {
+  const rules = state.settings.benefits;
+  if (rules.matchStepYear === null || rules.laterMatchRate === null || positive(state.settings.matchRate) === rules.laterMatchRate) return null;
+  let year: number;
+  if (rules.mode === 'calendar') {
+    const anniversary = addMonths(b.plans.dates.retirement, Math.max(0, rules.matchStepYear - 1) * 12);
+    if (!anniversary) return null;
+    year = Number(anniversary.slice(0, 4)) - state.tax.year + 1;
+  } else year = rules.matchStepYear - rules.membershipYear + 1;
+  return year > 1 && year <= state.settings.horizonYears ? year : null;
 }
 
 /**

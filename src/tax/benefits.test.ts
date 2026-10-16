@@ -1,7 +1,7 @@
 import { state2026 } from '../test/state2026';
 import { describe, expect, it } from 'vitest';
 import { sanitizeState } from '../state/model';
-import { computeBudget, projectSavings, fmt } from './budget';
+import { computeBudget, matchStepYear, projectSavings, fmt } from './budget';
 import { calculateTax, EMPTY_INPUT } from './engine';
 import { addMonths, yearFraction } from './plans';
 import { contributionRooms, estimateTfsaRoom } from './rooms';
@@ -265,6 +265,17 @@ describe('calendar participation, anniversaries and payroll', () => {
     expect(pts[1].contributed).toBe(0);
     expect(pts[2].contributed).toBeCloseTo(23437.5);
     expect(pts[6].contributed - pts[5].contributed).toBeCloseTo(30000);
+  });
+  it('reports the projection year the higher match starts', () => {
+    const s = workplacePlan(); s.settings.horizonYears = 10;
+    expect(matchStepYear(s, computeBudget(s))).toBe(5);
+    expect(matchStepYear(workplacePlan(125000, 6, 3), computeBudget(workplacePlan(125000, 6, 3)))).toBe(3);
+    expect(matchStepYear(workplacePlan(125000, 6, 5), computeBudget(workplacePlan(125000, 6, 5)))).toBeNull();
+    s.settings.horizonYears = 4;
+    expect(matchStepYear(s, computeBudget(s))).toBeNull();
+    Object.assign(s.settings.benefits, { mode: 'calendar', employmentStart: '2026-10-01' });
+    s.settings.horizonYears = 10;
+    expect(matchStepYear(s, computeBudget(s))).toBe(6);
   });
 });
 

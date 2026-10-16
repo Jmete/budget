@@ -20,7 +20,7 @@ take-home pay, federal and Ontario tax, CPP/EI, and what is left each month.
 - Dark mode by default, with a light mode.
 
 The 50/30/20 comparison uses after-tax income before personal payroll savings. Only personal savings count
-toward the 20% target; all debt payments count as needs, and unallocated cash remains separate. This is a
+toward the 20% target, together with any cash left over after spending; all debt payments count as needs. This is a
 savings-only adaptation: the usual rule also counts debt payments above the minimum toward 20%. Employer contributions appear in
 the dollar total for planned savings and the growth projection, but not in the 50/30/20 percentages. The planned
 saving rate also excludes unallocated cash, employer contributions and debt payments.
